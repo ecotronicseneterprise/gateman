@@ -30,8 +30,8 @@
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
 /* LOGIN */
-#loginPage { display:flex; align-items:center; justify-content:center; min-height:100vh; background: radial-gradient(ellipse at 50% 0%, #1e1b4b 0%, var(--bg) 70%); }
-.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 48px 40px; width: 380px; }
+#loginPage { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:16px; background: radial-gradient(ellipse at 50% 0%, #1e1b4b 0%, var(--bg) 70%); }
+.login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 48px 40px; width: 100%; max-width: 380px; }
 .login-logo { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }
 .login-sub { color: var(--muted); font-size: 14px; margin-bottom: 32px; }
 .form-group { margin-bottom: 18px; }
@@ -55,8 +55,9 @@ nav { flex:1; padding:16px 10px; }
 .sidebar-footer { padding:16px; border-top:1px solid var(--border); }
 .status-dot { width:8px; height:8px; border-radius:50%; background:var(--green); display:inline-block; margin-right:6px; animation:pulse 2s infinite; }
 @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-.main { margin-left:220px; padding:28px; min-height:100vh; }
+.main { margin-left:220px; padding:28px; min-height:100vh; overflow-x:hidden; }
 .page { display:none; }
 .page.active { display:block; }
 
@@ -94,6 +95,7 @@ nav { flex:1; padding:16px 10px; }
 /* LIVE FEED */
 .feed-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:22px; }
 .live-badge { display:flex; align-items:center; gap:6px; background:rgba(16,185,129,.1); border:1px solid rgba(16,185,129,.3); color:var(--green); padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+.feed-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
 .feed-list { max-height: 360px; overflow-y:auto; }
 .feed-item { display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--border); animation:slideIn .3s ease; }
 @keyframes slideIn { from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)} }
@@ -141,6 +143,8 @@ tr:hover td { background:rgba(99,102,241,.04); }
 
 <style>
 /* MOBILE RESPONSIVE DESIGN */
+html, body { overflow-x: hidden; }
+
 .mobile-menu-btn {
   display: none;
   position: fixed;
@@ -157,68 +161,81 @@ tr:hover td { background:rgba(99,102,241,.04); }
 .mobile-menu-btn svg { width: 20px; height: 20px; }
 .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; }
 
-@media (max-width: 768px) {
-  .mobile-menu-btn { display: block; }
-  .sidebar { transform: translateX(-100%); transition: transform .3s ease; z-index: 1002; }
-  .sidebar.open { transform: translateX(0); }
-  .main { margin-left: 0; padding: 20px 16px; }
-  .page-header { flex-direction: column; align-items: flex-start; gap: 16px; }
-  .page-title { font-size: 20px; }
-  .header-actions { width: 100%; justify-content: space-between; }
-  .stats-grid { grid-template-columns: 1fr; gap: 12px; }
-  .stat-card { padding: 16px; }
-  .stat-value { font-size: 28px; }
-  .charts-grid { grid-template-columns: 1fr; gap: 16px; }
-  .chart-wrap { height: 250px; }
-  .table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  table { min-width: 600px; }
-  th, td { white-space: nowrap; padding: 10px 12px; }
-  .modal { width: 95vw; max-width: none; margin: 20px; padding: 24px; }
-  .modal h3 { font-size: 16px; }
-  .login-card { width: 90vw; max-width: 400px; padding: 32px 24px; }
-  .login-logo { font-size: 24px; }
-  .btn { min-height: 44px; padding: 12px 20px; }
-  .nav-item { padding: 12px 16px; min-height: 48px; }
-  .feed-item { padding: 16px 0; gap: 12px; }
-  .feed-avatar { width: 36px; height: 36px; }
-  .feed-name { font-size: 13px; }
-  .feed-meta { font-size: 11px; }
+/* ---- TABLET: 769px – 1024px ---- */
+@media (max-width: 1024px) {
+  .sidebar { width: 200px; }
+  .main { margin-left: 200px; padding: 24px 20px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .charts-grid { grid-template-columns: 1fr !important; }
+  .stat-value { font-size: 30px; }
+  .login-card { max-width: 380px; width: 90vw; }
 }
 
-@media (max-width: 480px) {
-  .main { padding: 16px 12px; }
-  .login-card { width: 95vw; padding: 24px 20px; }
-  .login-logo { font-size: 20px; }
-  .login-sub { font-size: 12px; }
-  .page-title { font-size: 18px; }
-  .stat-card { padding: 12px; }
-  .stat-value { font-size: 24px; }
-  .stat-label { font-size: 11px; }
-  .chart-card { padding: 16px; }
-  .chart-title { font-size: 13px; }
-  .modal { margin: 10px; padding: 20px; }
-  .form-group input { padding: 14px 16px; }
-  .header-actions { flex-direction: column; gap: 8px; align-items: stretch; }
-  .header-actions .btn { width: 100%; }
-  .search-input { width: 100%; }
-  #provisionQR { max-width: 200px; padding: 8px; }
+/* ---- MOBILE: ≤768px ---- */
+@media (max-width: 768px) {
+  .mobile-menu-btn { display: block; }
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform .3s ease;
+    z-index: 1002;
+    width: 260px;
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .main { margin-left: 0 !important; padding: 64px 16px 24px !important; }
+
+  .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .page-title { font-size: 20px; }
+  .header-actions { width: 100%; flex-wrap: wrap; gap: 8px; }
+  .header-actions .btn { flex: 1 1 auto; min-width: 0; }
+
+  .stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px; }
+  .stat-card { padding: 16px; }
+  .stat-value { font-size: 26px; }
+
+  .charts-grid { grid-template-columns: 1fr !important; gap: 14px; }
+  .chart-wrap { height: 220px; }
+
+  .table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 580px; }
+  th, td { white-space: nowrap; padding: 10px 12px; font-size: 13px; }
+
+  .modal { width: 92vw; max-width: none; padding: 24px; }
+  .login-card { max-width: 400px; width: 92vw; padding: 32px 24px; }
+
+  .nav-item { padding: 12px 16px; min-height: 48px; }
+  .feed-item { padding: 14px 0; gap: 12px; }
+  .feed-avatar { width: 36px; height: 36px; }
+
+  .search-input { width: 100% !important; }
+  select.search-input { width: 100% !important; }
+  .form-group input, .form-group select { font-size: 16px; }
+
   #toast { bottom: 16px; right: 16px; left: 16px; max-width: none; }
 }
 
-@media (min-width: 481px) and (max-width: 768px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .charts-grid { grid-template-columns: 1fr; }
-}
+/* ---- SMALL PHONE: ≤480px ---- */
+@media (max-width: 480px) {
+  .main { padding: 60px 12px 20px !important; }
+  .stats-grid { grid-template-columns: 1fr !important; }
+  .stat-card { padding: 14px; }
+  .stat-value { font-size: 24px; }
+  .stat-label { font-size: 11px; }
 
-@media (min-width: 769px) and (max-width: 1024px) {
-  .sidebar { width: 200px; }
-  .main { margin-left: 200px; }
-  .stats-grid { grid-template-columns: repeat(3, 1fr); }
-  .charts-grid { grid-template-columns: 1fr; }
-}
+  .page-title { font-size: 18px; }
+  .chart-card { padding: 14px; }
+  .chart-title { font-size: 13px; }
+  .chart-wrap { height: 180px; }
 
-@media (min-width: 1025px) and (max-width: 1200px) {
-  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+  .login-card { width: 95vw; padding: 24px 18px; }
+
+  .header-actions { flex-direction: column; align-items: stretch; }
+  .header-actions .btn { width: 100%; }
+
+  .modal { margin: 10px; padding: 20px; }
+  .form-group input { padding: 14px; }
+
+  #provisionQR { max-width: 200px; padding: 8px; }
 }
 </style>
 </head>  <!-- FIX 2: </head> was missing — <body> must come AFTER </head> -->
@@ -228,10 +245,12 @@ tr:hover td { background:rgba(99,102,241,.04); }
 <!-- LOGIN / SIGNUP -->
 <div id="loginPage">
   <div class="login-card">
-    <div class="logo">
-      <img src="../public/gateman_icon.svg" alt="Gateman Logo" width="26" height="26" style="vertical-align:middle">
-      <span style="margin-left:8px">GATEMAN</span>
-      <span style="display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:2px">Attendance System</span>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <img src="../public/gateman_icon.svg" alt="Gateman Logo" width="32" height="32">
+      <div>
+        <div style="font-size:24px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;line-height:1.1">GATEMAN</div>
+        <div style="font-size:11px;font-weight:400;color:var(--muted)">Smart Attendance System</div>
+      </div>
     </div>
     <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)">
       <button class="btn" id="tabLogin" onclick="switchAuthTab('login')" style="flex:1;border-radius:0;border-bottom:2px solid var(--accent);color:var(--accent);background:none">Sign In</button>
@@ -287,13 +306,12 @@ tr:hover td { background:rgba(99,102,241,.04); }
 <div id="app">
   <!-- Sidebar -->
   <div class="sidebar">
-    <div class="sidebar-logo">
-      <img src="../public/gateman_icon.svg" alt="Gateman Logo" width="24" height="24">
-    </div>
-    <div class="logo">
-      <img src="../public/gateman_icon.svg" alt="Gateman Logo" width="26" height="26" style="vertical-align:middle">
-      <span style="margin-left:8px">GATEMAN</span>
-      <span style="display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:2px">Attendance System</span>
+    <div class="logo" style="display:flex;align-items:center;gap:10px">
+      <img src="../public/gateman_icon.svg" alt="Gateman Logo" width="26" height="26" style="flex-shrink:0">
+      <div>
+        <div style="font-size:18px;font-weight:800;line-height:1.1">GATEMAN</div>
+        <div style="font-size:10px;font-weight:400;-webkit-text-fill-color:var(--muted);line-height:1.3">Smart Attendance System</div>
+      </div>
     </div>
     <nav>
       <button class="nav-item active" onclick="showPage('dashboard', this)">
@@ -326,8 +344,11 @@ tr:hover td { background:rgba(99,102,241,.04); }
         <div><span class="status-dot" id="liveIndicator"></span><span style="font-size:12px;color:var(--muted)" id="liveStatus">Connecting...</span></div>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px" id="orgName"></div>
+      <button class="btn btn-outline btn-sm" style="width:100%;margin-top:8px" onclick="logout()">Logout</button>
     </div>
+  </div><!-- end .sidebar -->
 
+  <div class="main">
     <!-- DASHBOARD PAGE -->
     <div class="page active" id="page-dashboard">
       <div class="page-header">
@@ -444,21 +465,53 @@ tr:hover td { background:rgba(99,102,241,.04); }
     <!-- ENROLLMENT PAGE -->
     <div class="page" id="page-enrollment">
       <div class="page-header">
-        <div class="page-title">Pending Enrollments</div>
+        <div class="page-title">Card Enrollment</div>
       </div>
+
+      <!-- Enroll Card Panel -->
+      <div class="card" style="padding:28px;margin-bottom:24px">
+        <h3 style="font-size:16px;font-weight:600;margin-bottom:16px">Enroll a New Card</h3>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Select an employee and device, then click Enroll. The device LED will blink — tap the RFID card within 60 seconds.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+          <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
+            <label>Employee</label>
+            <select id="enrollEmployee" class="search-input" style="width:100%;padding:10px 12px">
+              <option value="">Select employee...</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
+            <label>Device</label>
+            <select id="enrollDevice" class="search-input" style="width:100%;padding:10px 12px">
+              <option value="">Select device...</option>
+            </select>
+          </div>
+          <button class="btn btn-accent" id="startEnrollBtn" onclick="startEnrollment()" style="height:42px;white-space:nowrap">Enroll Card</button>
+        </div>
+
+        <!-- Status banner (hidden by default) -->
+        <div id="enrollStatus" style="display:none;margin-top:20px;padding:16px;border-radius:10px;font-size:14px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div id="enrollSpinner" style="width:20px;height:20px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite"></div>
+            <span id="enrollStatusText">Waiting for card tap on device...</span>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="cancelEnrollment()" id="enrollCancelBtn" style="margin-top:12px">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Recent Enrollments -->
       <div class="table-card">
         <div class="table-header" style="border-bottom:1px solid var(--border)">
-          <span style="font-size:14px;color:var(--muted)">Cards tapped on device waiting for employee assignment</span>
+          <span style="font-size:14px;color:var(--muted)">Recent Enrollments</span>
           <button class="btn btn-outline btn-sm" onclick="loadEnrollments()">↻ Refresh</button>
         </div>
         <table>
           <thead>
             <tr>
+              <th>Employee</th>
               <th>Card UID</th>
-              <th>Photo</th>
               <th>Device</th>
+              <th>Status</th>
               <th>Time</th>
-              <th>Assign To</th>
             </tr>
           </thead>
           <tbody id="enrollmentTable"></tbody>
@@ -566,7 +619,6 @@ tr:hover td { background:rgba(99,102,241,.04); }
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('addEmployeeModal')">Cancel</button>
       <button class="btn btn-accent" onclick="addEmployee()">Add Employee</button>
-      <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
     </div>
   </div>
 </div>
@@ -1058,45 +1110,158 @@ async function loadAttendance() {
 }
 
 // ============================================================
-// ENROLLMENT
+// ENROLLMENT — Admin-driven flow
 // ============================================================
-async function loadEnrollments() {
+let activeEnrollId = null;
+let enrollPollTimer = null;
+let enrollTimeoutTimer = null;
+
+async function loadEnrollmentDropdowns() {
   if (!currentOrgId) return;
-  const { data: list }      = await sb.from('enrollment_queue').select('*, devices(name)').eq('organization_id', currentOrgId).eq('status', 'pending').order('created_at', { ascending: false });
-  const { data: employees } = await sb.from('users').select('id, name, employee_id').eq('organization_id', currentOrgId).eq('active', true).order('name');
-  const tb = document.getElementById('enrollmentTable');
-  if (!list || list.length === 0) {
-    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">No pending enrollments</td></tr>';
-    return;
-  }
-  let html = '';
-  for (const e of list) {
-    let photoHtml = '<span style="color:var(--muted);font-size:12px">—</span>';
-    if (e.photo_url) { const s = await loadSignedUrl(e.photo_url); if (s) photoHtml = `<img src="${s}" style="width:40px;height:40px;border-radius:8px;object-fit:cover">`; }
-    const empOptions = (employees||[]).map(emp => `<option value="${emp.id}">${emp.name} (${emp.employee_id})</option>`).join('');
-    html += `<tr>
-      <td><code style="color:var(--accent2)">${e.credential_value}</code></td>
-      <td>${photoHtml}</td>
-      <td style="color:var(--muted);font-size:13px">${e.devices?.name||''}</td>
-      <td style="color:var(--muted);font-size:12px">${new Date(e.created_at).toLocaleString('en-GB')}</td>
-      <td>
-        <select id="assign_${e.id}" class="search-input" style="width:180px;padding:6px 10px">
-          <option value="">Select employee...</option>${empOptions}
-        </select>
-        <button class="btn btn-green btn-sm" style="margin-left:8px" onclick="assignCard('${e.id}','${e.credential_value}')">Assign</button>
-      </td></tr>`;
-  }
-  tb.innerHTML = html;
+  const { data: employees } = await sb.from('users').select('id, name, employee_id, user_credentials(type, value)').eq('organization_id', currentOrgId).eq('active', true).order('name');
+  const { data: devices }   = await sb.from('devices').select('id, name, status').eq('organization_id', currentOrgId).eq('status', 'active').order('name');
+
+  const empSel = document.getElementById('enrollEmployee');
+  empSel.innerHTML = '<option value="">Select employee...</option>';
+  (employees || []).forEach(e => {
+    const hasCard = e.user_credentials?.some(c => c.type === 'rfid');
+    empSel.innerHTML += `<option value="${e.id}">${e.name} (${e.employee_id})${hasCard ? ' ✓ has card' : ''}</option>`;
+  });
+
+  const devSel = document.getElementById('enrollDevice');
+  devSel.innerHTML = '<option value="">Select device...</option>';
+  (devices || []).forEach(d => {
+    devSel.innerHTML += `<option value="${d.id}">${d.name || 'Unnamed Device'}</option>`;
+  });
 }
 
-async function assignCard(enrollmentId, credentialValue) {
-  const empId = document.getElementById(`assign_${enrollmentId}`).value;
-  if (!empId) return showToast('Select an employee first', 'error');
-  const { error } = await sb.from('user_credentials').insert({ user_id: empId, organization_id: currentOrgId, type: 'rfid', value: credentialValue });
-  if (error) return showToast(error.message || 'Failed to assign card', 'error');
-  await sb.from('enrollment_queue').update({ status: 'assigned', assigned_to: empId, resolved_at: new Date().toISOString() }).eq('id', enrollmentId);
-  showToast('Card assigned successfully!', 'success');
-  loadEnrollments();
+async function startEnrollment() {
+  const userId   = document.getElementById('enrollEmployee').value;
+  const deviceId = document.getElementById('enrollDevice').value;
+  if (!userId)   return showToast('Select an employee first', 'error');
+  if (!deviceId) return showToast('Select a device first', 'error');
+
+  const btn = document.getElementById('startEnrollBtn');
+  btn.disabled = true; btn.textContent = 'Starting...';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { showToast('Session expired', 'error'); return; }
+
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/start-enrollment`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, device_id: deviceId, organization_id: currentOrgId })
+    });
+    const r = await resp.json();
+    if (!resp.ok) { showToast(r?.error || 'Failed to start enrollment', 'error'); return; }
+
+    activeEnrollId = r.enrollment_id;
+    showEnrollStatus('waiting', 'Waiting for card tap on device... (60s)');
+
+    // Poll enrollment_queue for status change
+    let elapsed = 0;
+    enrollPollTimer = setInterval(async () => {
+      elapsed += 2;
+      const { data: rec } = await sb.from('enrollment_queue').select('status, credential_value').eq('id', activeEnrollId).single();
+      if (rec && rec.status === 'assigned') {
+        clearEnrollTimers();
+        showEnrollStatus('success', `Card enrolled successfully! UID: ${rec.credential_value}`);
+        showToast('Card enrolled successfully!', 'success');
+        loadEnrollments();
+        loadEmployees();
+      } else if (rec && rec.status === 'rejected') {
+        clearEnrollTimers();
+        showEnrollStatus('error', 'Enrollment was cancelled or timed out');
+      } else {
+        const remaining = 60 - elapsed;
+        if (remaining > 0) {
+          document.getElementById('enrollStatusText').textContent = `Waiting for card tap on device... (${remaining}s)`;
+        }
+      }
+    }, 2000);
+
+    // Auto-timeout after 65s (give device a few extra seconds)
+    enrollTimeoutTimer = setTimeout(() => {
+      if (activeEnrollId) {
+        clearEnrollTimers();
+        showEnrollStatus('error', 'Enrollment timed out — no card was tapped. Try again.');
+      }
+    }, 65000);
+
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enroll Card';
+  }
+}
+
+async function cancelEnrollment() {
+  if (activeEnrollId) {
+    await sb.from('enrollment_queue').update({ status: 'rejected', resolved_at: new Date().toISOString() }).eq('id', activeEnrollId);
+  }
+  clearEnrollTimers();
+  document.getElementById('enrollStatus').style.display = 'none';
+  showToast('Enrollment cancelled', 'info');
+}
+
+function clearEnrollTimers() {
+  if (enrollPollTimer) { clearInterval(enrollPollTimer); enrollPollTimer = null; }
+  if (enrollTimeoutTimer) { clearTimeout(enrollTimeoutTimer); enrollTimeoutTimer = null; }
+  activeEnrollId = null;
+}
+
+function showEnrollStatus(type, text) {
+  const el = document.getElementById('enrollStatus');
+  const spinner = document.getElementById('enrollSpinner');
+  const txt = document.getElementById('enrollStatusText');
+  const cancelBtn = document.getElementById('enrollCancelBtn');
+  el.style.display = 'block';
+  txt.textContent = text;
+
+  if (type === 'waiting') {
+    el.style.background = 'rgba(99,102,241,.1)';
+    el.style.border = '1px solid rgba(99,102,241,.3)';
+    spinner.style.display = 'block';
+    cancelBtn.style.display = 'inline-block';
+  } else if (type === 'success') {
+    el.style.background = 'rgba(16,185,129,.1)';
+    el.style.border = '1px solid rgba(16,185,129,.3)';
+    spinner.style.display = 'none';
+    cancelBtn.style.display = 'none';
+  } else if (type === 'error') {
+    el.style.background = 'rgba(239,68,68,.1)';
+    el.style.border = '1px solid rgba(239,68,68,.3)';
+    spinner.style.display = 'none';
+    cancelBtn.style.display = 'none';
+  }
+}
+
+async function loadEnrollments() {
+  if (!currentOrgId) return;
+  loadEnrollmentDropdowns();
+  const { data: list } = await sb.from('enrollment_queue')
+    .select('*, devices(name), users!enrollment_queue_assigned_to_fkey(name, employee_id)')
+    .eq('organization_id', currentOrgId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  const tb = document.getElementById('enrollmentTable');
+  if (!list || list.length === 0) {
+    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:32px">No enrollments yet</td></tr>';
+    return;
+  }
+  tb.innerHTML = list.map(e => {
+    const empName = e.users?.name || '—';
+    const empId   = e.users?.employee_id || '';
+    const badge   = e.status === 'assigned' ? 'present' : e.status === 'waiting' ? 'pending' : 'absent';
+    return `<tr>
+      <td><strong>${empName}</strong>${empId ? `<br><span style="font-size:11px;color:var(--muted)">${empId}</span>` : ''}</td>
+      <td><code style="font-size:12px;color:var(--accent2)">${e.credential_value || 'Waiting...'}</code></td>
+      <td style="color:var(--muted);font-size:13px">${e.devices?.name || '—'}</td>
+      <td><span class="badge ${badge}">${e.status}</span></td>
+      <td style="color:var(--muted);font-size:12px">${new Date(e.created_at).toLocaleString('en-GB')}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ============================================================

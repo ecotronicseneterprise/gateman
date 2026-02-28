@@ -1,4 +1,10 @@
 # EcoTronic Attendance System — Deployment Guide
+C:\gateman>npx http-server c:\gateman -p 8080 --cors -c-1
+Need to install the following packages:
+http-server@14.1.1
+
+
+
 
 ## Project Structure
 ```

@@ -29,8 +29,8 @@
 // ============================================================
 // CONFIGURATION — WiFi & NTP (still hardcoded per-site)
 // ============================================================
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID     = "MTN_4G_56F7A3";
+const char* WIFI_PASSWORD = "88888888";
 const char* NTP_SERVER    = "pool.ntp.org";
 const long  GMT_OFFSET    = 3600;
 const int   DAYLIGHT      = 0;
@@ -93,7 +93,12 @@ User users[MAX_USERS];
 int userCount = 0;
 
 bool enrollMode = false;
+String activeEnrollmentId = "";  // Set when server requests enrollment
+unsigned long enrollTimeout = 0;  // Auto-exit enroll mode after timeout
 unsigned long eventCounter = 0;  // Monotonic counter for device_event_id
+
+#define ENROLL_POLL_MS    5000   // Check server for enrollment commands every 5s
+#define ENROLL_TIMEOUT_MS 60000  // Auto-cancel enrollment after 60s
 
 // Duplicate tap prevention
 String lastUID = "";
@@ -159,7 +164,7 @@ void provisionDevice(String token) {
 
   HTTPClient http;
   // For pilot: use hardcoded Supabase URL. Production: from QR payload.
-  String provUrl = String(SUPABASE_URL.length() > 0 ? SUPABASE_URL : "https://YOUR_PROJECT.supabase.co");
+  String provUrl = String(SUPABASE_URL.length() > 0 ? SUPABASE_URL : "https://ueobebsgheecclwcbigy.supabase.co");
   http.begin(provUrl + "/functions/v1/device-provision");
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(10000);
@@ -237,7 +242,12 @@ void setup() {
 
   pinMode(STATUS_LED, OUTPUT);
   pinMode(ENROLL_BTN, INPUT_PULLUP);
-  digitalWrite(STATUS_LED, LOW);
+
+  // Startup LED sequence — 3 quick flashes so user knows device is alive
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(STATUS_LED, HIGH); delay(200);
+    digitalWrite(STATUS_LED, LOW);  delay(200);
+  }
 
   // Derive hardware UID immediately
   DEVICE_UID = WiFi.macAddress();
@@ -297,7 +307,15 @@ void setup() {
 void loop() {
   esp_task_wdt_reset();  // Feed watchdog
 
-  // Enrollment button — hold 2s to toggle
+  // Auto-timeout enrollment mode (60s)
+  if (enrollMode && millis() > enrollTimeout) {
+    Serial.println("[ENROLL] Timeout — exiting enroll mode");
+    enrollMode = false;
+    activeEnrollmentId = "";
+    blinkError();
+  }
+
+  // Enrollment button — hold 2s to toggle (manual fallback, legacy mode)
   static unsigned long btnDown = 0;
   if (digitalRead(ENROLL_BTN) == LOW) {
     if (btnDown == 0) btnDown = millis();
@@ -314,12 +332,17 @@ void loop() {
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
 
+    // Immediate LED flash — visual feedback that card was read
+    digitalWrite(STATUS_LED, HIGH);
+
     // Duplicate prevention
     if (uid == lastUID && millis() - lastTapMs < DUPLICATE_WINDOW) {
       Serial.println("[RFID] Duplicate tap ignored");
+      digitalWrite(STATUS_LED, LOW);
     } else {
       lastUID = uid;
       lastTapMs = millis();
+      digitalWrite(STATUS_LED, LOW);
       if (enrollMode) handleEnroll(uid);
       else addToQueue(uid, getEpochTime());
     }
@@ -328,7 +351,13 @@ void loop() {
   processQueue();
 
   // Periodic tasks
-  static unsigned long lastSync = 0, lastWifi = 0, lastHeartbeat = 0;
+  static unsigned long lastSync = 0, lastWifi = 0, lastHeartbeat = 0, lastEnrollPoll = 0;
+
+  // Poll server for admin-initiated enrollment commands
+  if (!enrollMode && millis() - lastEnrollPoll > ENROLL_POLL_MS) {
+    if (WiFi.status() == WL_CONNECTED) checkEnrollmentCommand();
+    lastEnrollPoll = millis();
+  }
 
   if (millis() - lastSync > 300000) {
     if (WiFi.status() == WL_CONNECTED) { syncPendingLogs(); downloadUsers(); }
@@ -380,13 +409,20 @@ String getUID() {
 }
 
 // ============================================================
-// ENROLLMENT
+// ENROLLMENT — Admin-driven (server polling) + manual fallback
 // ============================================================
 void toggleEnroll() {
   enrollMode = !enrollMode;
-  Serial.println(enrollMode ? "\n[ENROLL] MODE ON" : "[ENROLL] MODE OFF");
-  if (enrollMode) { for(int i=0;i<6;i++){digitalWrite(STATUS_LED,HIGH);delay(80);digitalWrite(STATUS_LED,LOW);delay(80);} }
-  else blinkOK();
+  if (enrollMode) {
+    activeEnrollmentId = "";  // Manual mode — no enrollment_id
+    enrollTimeout = millis() + ENROLL_TIMEOUT_MS;
+    Serial.println("\n[ENROLL] MANUAL MODE ON (60s timeout)");
+    for(int i=0;i<6;i++){digitalWrite(STATUS_LED,HIGH);delay(80);digitalWrite(STATUS_LED,LOW);delay(80);}
+  } else {
+    activeEnrollmentId = "";
+    Serial.println("[ENROLL] MODE OFF");
+    blinkOK();
+  }
 }
 
 void handleEnroll(String uid) {
@@ -400,6 +436,9 @@ void handleEnroll(String uid) {
     doc["device_uid"] = DEVICE_UID;
     doc["device_secret"] = DEVICE_SECRET;
     doc["credential_value"] = uid;
+    if (activeEnrollmentId.length() > 0) {
+      doc["enrollment_id"] = activeEnrollmentId;
+    }
     doc["photo_path"] = photo;
     doc["timestamp"] = timestampToISO(getEpochTime());
     String body; serializeJson(doc, body);
@@ -407,13 +446,59 @@ void handleEnroll(String uid) {
     http.begin(SUPABASE_URL + "/functions/v1/device-enroll");
     http.addHeader("Content-Type","application/json");
     http.setTimeout(HTTP_TIMEOUT_MS);
-    int code = http.POST(body); http.end();
-    Serial.println("[ENROLL] HTTP " + String(code));
-    if (code==200||code==201) downloadUsers();
+    int code = http.POST(body);
+    String resp = http.getString();
+    http.end();
+    Serial.println("[ENROLL] HTTP " + String(code) + " " + resp);
+    if (code==200||code==201) {
+      downloadUsers();
+      blinkOK();
+    } else {
+      blinkError();
+    }
   } else {
     camSerial.println("SAVE_ENROLL:" + uid + ":" + photo);
+    blinkOK();
   }
-  blinkOK();
+
+  // Exit enroll mode after successful enrollment
+  enrollMode = false;
+  activeEnrollmentId = "";
+}
+
+/**
+ * Poll server for admin-initiated enrollment commands.
+ * If a 'waiting' enrollment exists, enter enroll mode automatically.
+ */
+void checkEnrollmentCommand() {
+  DynamicJsonDocument doc(256);
+  doc["device_uid"] = DEVICE_UID;
+  doc["device_secret"] = DEVICE_SECRET;
+  String body; serializeJson(doc, body);
+
+  HTTPClient http;
+  http.begin(SUPABASE_URL + "/functions/v1/check-enrollment");
+  http.addHeader("Content-Type", "application/json");
+  http.setTimeout(HTTP_TIMEOUT_MS);
+
+  int code = http.POST(body);
+  if (code == 200) {
+    String resp = http.getString();
+    DynamicJsonDocument respDoc(512);
+    if (deserializeJson(respDoc, resp) == DeserializationError::Ok) {
+      bool shouldEnroll = respDoc["enroll"] | false;
+      if (shouldEnroll) {
+        String eid = respDoc["enrollment_id"].as<String>();
+        Serial.println("[ENROLL] Server requests enrollment! ID=" + eid);
+        activeEnrollmentId = eid;
+        enrollMode = true;
+        enrollTimeout = millis() + ENROLL_TIMEOUT_MS;
+        // Rapid blink to signal enroll mode active
+        for(int i=0;i<6;i++){digitalWrite(STATUS_LED,HIGH);delay(80);digitalWrite(STATUS_LED,LOW);delay(80);}
+      }
+    }
+  }
+  http.end();
 }
 
 // ============================================================

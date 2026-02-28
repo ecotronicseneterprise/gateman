@@ -3,11 +3,12 @@ import { getSupabaseAdmin, authenticateDevice, auditLog } from "../_shared/auth.
 import { handleCors, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return handleCors();
+  const corsResp = handleCors(req);
+  if (corsResp) return corsResp;
 
   try {
     const body = await req.json();
-    const { device_uid, device_secret, credential_value, credential_type, photo_base64 } = body;
+    const { device_uid, device_secret, credential_value, credential_type, photo_base64, enrollment_id } = body;
 
     if (!device_uid || !device_secret || !credential_value) {
       return errorResponse("missing fields: device_uid, device_secret, credential_value", 400);
@@ -25,9 +26,9 @@ serve(async (req: Request) => {
     const orgId = device.organization_id;
     const credType = credential_type || "rfid";
 
-    console.log(`[device-enroll] org=${orgId} device=${device.id} credential=${credential_value}`);
+    console.log(`[device-enroll] org=${orgId} device=${device.id} credential=${credential_value} enrollment_id=${enrollment_id || "none"}`);
 
-    // Check if this credential is already in enrollment_queue (pending) or user_credentials
+    // Check if this credential is already assigned to someone
     const { data: existingCred } = await supabase
       .from("user_credentials")
       .select("id")
@@ -41,6 +42,67 @@ serve(async (req: Request) => {
       return jsonResponse({ status: "already_assigned", credential_value });
     }
 
+    // ── ADMIN-INITIATED ENROLLMENT (has enrollment_id) ──
+    if (enrollment_id) {
+      // Look up the waiting enrollment
+      const { data: waitingEnroll, error: fetchErr } = await supabase
+        .from("enrollment_queue")
+        .select("id, assigned_to, organization_id, device_id")
+        .eq("id", enrollment_id)
+        .eq("status", "waiting")
+        .maybeSingle();
+
+      if (fetchErr || !waitingEnroll) {
+        console.warn(`[device-enroll] waiting enrollment not found: ${enrollment_id}`);
+        return errorResponse("enrollment_not_found", 404);
+      }
+
+      // Verify it belongs to this device's org
+      if (waitingEnroll.organization_id !== orgId) {
+        return errorResponse("org_mismatch", 403);
+      }
+
+      // Insert user_credentials to link the card to the employee
+      const { error: credErr } = await supabase
+        .from("user_credentials")
+        .insert({
+          user_id: waitingEnroll.assigned_to,
+          organization_id: orgId,
+          type: credType,
+          value: credential_value,
+        });
+
+      if (credErr) {
+        console.error(`[device-enroll] credential insert failed`, credErr);
+        return errorResponse("credential_insert_failed: " + credErr.message, 500);
+      }
+
+      // Update enrollment_queue: fill in credential_value, mark assigned
+      await supabase
+        .from("enrollment_queue")
+        .update({
+          credential_value,
+          status: "assigned",
+          resolved_at: new Date().toISOString(),
+        })
+        .eq("id", enrollment_id);
+
+      // Audit
+      auditLog(supabase, {
+        organization_id: orgId,
+        actor_type: "device",
+        actor_id: device.id,
+        action: "enrollment.completed",
+        resource_type: "enrollment_queue",
+        resource_id: enrollment_id,
+        metadata: { credential_type: credType, credential_value, assigned_to: waitingEnroll.assigned_to },
+      });
+
+      console.log(`[device-enroll] ADMIN-ENROLL SUCCESS enrollment_id=${enrollment_id} credential=${credential_value}`);
+      return jsonResponse({ status: "enrolled", enrollment_id, credential_value, assigned_to: waitingEnroll.assigned_to });
+    }
+
+    // ── LEGACY DEVICE-INITIATED ENROLLMENT (no enrollment_id) ──
     // Check if already pending in enrollment queue
     const { data: existingEnroll } = await supabase
       .from("enrollment_queue")

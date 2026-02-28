@@ -4,7 +4,8 @@ import { getSupabaseAdmin, auditLog } from "../_shared/auth.ts";
 import { handleCors, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return handleCors();
+  const corsResp = handleCors(req);
+  if (corsResp) return corsResp;
 
   try {
     // Authenticate user via JWT

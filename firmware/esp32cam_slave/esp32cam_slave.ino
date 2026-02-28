@@ -79,7 +79,12 @@ void setup() {
   Serial.println("============================");
 
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
+
+  // Startup LED sequence — 3 quick flashes so user knows CAM is alive
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_PIN, HIGH); delay(200);
+    digitalWrite(LED_PIN, LOW);  delay(200);
+  }
 
   wroomSerial.begin(9600, SERIAL_8N1, WROOM_RX, WROOM_TX);
 

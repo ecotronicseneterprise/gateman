@@ -26,6 +26,8 @@ Deno.serve(async (req: Request) => {
   try {
     const { device_name, organization_id, user_id } = await req.json();
     
+    console.log('[create-provision-token] request:', { device_name, organization_id, user_id });
+    
     if (!organization_id || !user_id) {
       console.error('[create-provision-token] missing required fields');
       return errorResponse('organization_id and user_id required', 400);
@@ -38,13 +40,15 @@ Deno.serve(async (req: Request) => {
     );
 
     // Verify user is owner or admin of the org
-    const { data: membership } = await supabase
+    const { data: membership, error: membershipErr } = await supabase
       .from('org_members')
       .select('role')
       .eq('organization_id', organization_id)
       .eq('user_id', user_id)
       .in('role', ['owner', 'admin'])
       .single();
+
+    console.log('[create-provision-token] membership check:', { membership, membershipErr: membershipErr?.message });
 
     if (!membership) {
       console.warn(`[create-provision-token] unauthorized | user=${user_id} org=${organization_id}`);

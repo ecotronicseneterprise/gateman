@@ -24,53 +24,35 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    const { device_name, organization_id, access_token } = await req.json();
+    const { device_name, organization_id, user_id } = await req.json();
     
-    if (!access_token) {
-      console.error('[create-provision-token] no access_token in request body');
-      return errorResponse('Unauthorized - access_token required', 401);
+    if (!organization_id || !user_id) {
+      console.error('[create-provision-token] missing required fields');
+      return errorResponse('organization_id and user_id required', 400);
     }
 
-    // Create anon client with access token from request body
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: `Bearer ${access_token}` } } }
-    );
-
-    // Get current user using the access token
-    const { data: { user }, error: userErr } = await supabaseClient.auth.getUser();
-    
-    if (userErr || !user) {
-      console.error('[create-provision-token] auth failed:', userErr?.message);
-      return errorResponse('Unauthorized - invalid or expired session', 401);
-    }
-
-    const userId = user.id;
-    console.log('[create-provision-token] authenticated user:', userId);
-
-    // Use service role for privileged operations
+    // Use service role for all operations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
-    if (!organization_id) {
-      return errorResponse('organization_id required', 400);
-    }
 
-    // 1. Verify user is owner or admin of the org
+    // Verify user is owner or admin of the org
     const { data: membership } = await supabase
       .from('org_members')
       .select('role')
       .eq('organization_id', organization_id)
-      .eq('user_id', userId)
+      .eq('user_id', user_id)
       .in('role', ['owner', 'admin'])
       .single();
 
     if (!membership) {
-      console.warn(`[create-provision-token] unauthorized | user=${userId} org=${organization_id}`);
+      console.warn(`[create-provision-token] unauthorized | user=${user_id} org=${organization_id}`);
       return errorResponse('Not authorized: must be org owner or admin', 403);
     }
+
+    const userId = user_id;
+    console.log('[create-provision-token] authenticated user:', userId);
 
     // Rate limit: max 10 tokens per org per hour
     const rateLimited = await checkRateLimit(supabase, {

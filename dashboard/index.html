@@ -1309,7 +1309,7 @@ async function generateProvisionToken() {
       body: JSON.stringify({ 
         device_name: deviceName || 'New Device', 
         organization_id: currentOrgId,
-        access_token: session.access_token  // Send token in body as workaround
+        user_id: session.user.id
       })
     });
     const r = await resp.json();

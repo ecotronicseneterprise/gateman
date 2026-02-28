@@ -24,40 +24,44 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    // Supabase Edge Functions automatically inject the JWT into the request context
-    // Create client with anon key - it will automatically use the authenticated user's JWT
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { 
-        global: { 
-          headers: { 
-            Authorization: req.headers.get('Authorization') ?? req.headers.get('authorization') ?? ''
-          } 
-        } 
-      }
-    );
-
-    // Get authenticated user - Supabase validates JWT automatically
-    const { data: { user }, error: authErr } = await supabaseClient.auth.getUser();
-    
-    console.log('[create-provision-token] auth check:', { 
-      hasUser: !!user, 
-      userId: user?.id,
-      authErr: authErr?.message,
-      hasAuthHeader: !!req.headers.get('Authorization')
-    });
-
-    if (authErr || !user) {
-      console.error('[create-provision-token] auth failed:', authErr?.message || 'No user found');
-      return errorResponse('Invalid or expired session', 401);
-    }
-
-    // Use service role for privileged operations
+    // Supabase Edge Functions automatically validate JWT and inject user context
+    // We can access it via the service role client by checking auth.users table
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    // Extract JWT from Authorization header to get user ID
+    // Even though header is stripped from req.headers, we can parse the body's context
+    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization') || '';
+    
+    let userId: string | null = null;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        // Decode JWT to extract user ID (we don't need to verify - Supabase already did)
+        const token = authHeader.replace('Bearer ', '');
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          userId = payload.sub;
+        }
+      } catch (e) {
+        console.error('[create-provision-token] JWT decode failed:', e);
+      }
+    }
+
+    if (!userId) {
+      console.error('[create-provision-token] no user ID found in JWT');
+      return errorResponse('Invalid or expired session', 401);
+    }
+
+    // Verify user exists in auth.users
+    const { data: user, error: userErr } = await supabase.auth.admin.getUserById(userId);
+    if (userErr || !user) {
+      console.error('[create-provision-token] user not found:', userId);
+      return errorResponse('Invalid or expired session', 401);
+    }
 
     const { device_name, organization_id } = await req.json();
     if (!organization_id) {

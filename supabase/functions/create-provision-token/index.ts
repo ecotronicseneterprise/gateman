@@ -24,18 +24,32 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    // Create Supabase client with anon key to use the user's JWT from the request
-    const authHeader = req.headers.get('Authorization');
+    // Supabase Edge Functions automatically inject the JWT into the request context
+    // Create client with anon key - it will automatically use the authenticated user's JWT
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader || '' } } }
+      { 
+        global: { 
+          headers: { 
+            Authorization: req.headers.get('Authorization') ?? req.headers.get('authorization') ?? ''
+          } 
+        } 
+      }
     );
 
-    // Get authenticated user from JWT
+    // Get authenticated user - Supabase validates JWT automatically
     const { data: { user }, error: authErr } = await supabaseClient.auth.getUser();
+    
+    console.log('[create-provision-token] auth check:', { 
+      hasUser: !!user, 
+      userId: user?.id,
+      authErr: authErr?.message,
+      hasAuthHeader: !!req.headers.get('Authorization')
+    });
+
     if (authErr || !user) {
-      console.error('[create-provision-token] auth failed:', authErr?.message || 'No user');
+      console.error('[create-provision-token] auth failed:', authErr?.message || 'No user found');
       return errorResponse('Invalid or expired session', 401);
     }
 

@@ -631,6 +631,7 @@ void handleEnroll(String uid) {
  * If a 'waiting' enrollment exists, enter enroll mode automatically.
  */
 void checkEnrollmentCommand() {
+  Serial.print("[ENROLL] Polling... ");
   DynamicJsonDocument doc(256);
   doc["device_uid"] = DEVICE_UID;
   doc["device_secret"] = DEVICE_SECRET;
@@ -642,8 +643,11 @@ void checkEnrollmentCommand() {
   http.setTimeout(HTTP_TIMEOUT_MS);
 
   int code = http.POST(body);
+  Serial.print("HTTP " + String(code) + " ");
+  
   if (code == 200) {
     String resp = http.getString();
+    Serial.println("Response: " + resp);
     DynamicJsonDocument respDoc(512);
     if (deserializeJson(respDoc, resp) == DeserializationError::Ok) {
       bool shouldEnroll = respDoc["enroll"] | false;
@@ -655,8 +659,14 @@ void checkEnrollmentCommand() {
         enrollTimeout = millis() + ENROLL_TIMEOUT_MS;
         // Rapid blink to signal enroll mode active
         for(int i=0;i<6;i++){digitalWrite(STATUS_LED,HIGH);delay(80);digitalWrite(STATUS_LED,LOW);delay(80);}
+      } else {
+        Serial.println("[ENROLL] No pending enrollment");
       }
+    } else {
+      Serial.println("[ENROLL] JSON parse failed");
     }
+  } else {
+    Serial.println("Failed");
   }
   http.end();
 }

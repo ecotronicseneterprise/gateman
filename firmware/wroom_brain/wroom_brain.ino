@@ -233,7 +233,12 @@ void setup() {
   delay(1000);
 
   // Watchdog — auto-reboot if code hangs
-  esp_task_wdt_init(WDT_TIMEOUT_S, true);
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT_S * 1000,
+    .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdt_config);
   esp_task_wdt_add(NULL);
 
   Serial.println("\n============================");
@@ -621,7 +626,11 @@ void syncPendingLogs() {
     DynamicJsonDocument payload(512);
     payload["device_uid"]      = DEVICE_UID;
     payload["device_secret"]   = DEVICE_SECRET;
-    payload["device_event_id"] = rec["device_event_id"] | (DEVICE_UID + "-" + rec["timestamp"].as<String>() + "-" + rec["rfid_uid"].as<String>());
+    String evtId = rec["device_event_id"].as<String>();
+    if (evtId.length() == 0 || evtId == "null") {
+      evtId = DEVICE_UID + "-" + rec["timestamp"].as<String>() + "-" + rec["rfid_uid"].as<String>();
+    }
+    payload["device_event_id"] = evtId;
     payload["credential_value"]= rec["rfid_uid"];
     payload["event_time"]      = rec["timestamp"];
     payload["action"]          = rec["action"];

@@ -1,6 +1,14 @@
 import { getSupabaseAdmin, auditLog } from '../_shared/auth.ts';
 import { handleCors, jsonResponse, errorResponse } from '../_shared/cors.ts';
-import { hash } from 'https://deno.land/x/bcrypt@v0.4.1/mod.ts';
+
+// Simple hash function using Web Crypto API (bcrypt Worker not available in Edge Functions)
+async function hashSecret(secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(secret);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Edge Function: device-provision
@@ -93,9 +101,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 4. Generate device secret — plaintext returned once, bcrypt hash stored
+    // 4. Generate device secret — plaintext returned once, SHA-256 hash stored
     const rawSecret = crypto.randomUUID() + '-' + crypto.randomUUID();
-    const hashedSecret = await hash(rawSecret, 10);
+    const hashedSecret = await hashSecret(rawSecret);
 
     // 5. Create device record
     const { data: device, error: insertErr } = await supabase

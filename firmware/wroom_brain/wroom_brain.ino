@@ -25,6 +25,7 @@
 #include <time.h>
 #include <esp_task_wdt.h>
 #include <Preferences.h>
+#include <SPIFFS.h>
 
 // ============================================================
 // CONFIGURATION — WiFi & NTP (still hardcoded per-site)
@@ -75,6 +76,7 @@ Preferences preferences;
 #define HEARTBEAT_MS      60000
 #define SYNC_MAX_PER_CYCLE 20    // Max records to sync per cycle (guard watchdog)
 #define HTTP_TIMEOUT_MS   8000   // Per-request timeout for submit-log
+#define OFFLINE_QUEUE_FILE "/queue.txt"  // SPIFFS file for offline logs
 
 HardwareSerial camSerial(2);
 MFRC522 rfid(RFID_SS, -1);
@@ -258,6 +260,14 @@ void setup() {
     digitalWrite(STATUS_LED, LOW);  delay(200);
   }
 
+  // Initialize SPIFFS for offline queue
+  if (!SPIFFS.begin(true)) {
+    Serial.println("[SPIFFS] Mount failed! Offline queue disabled.");
+  } else {
+    Serial.println("[SPIFFS] OK - Offline queue enabled");
+  }
+  esp_task_wdt_reset();
+
   // Derive hardware UID immediately (need WiFi mode set first)
   WiFi.mode(WIFI_STA);
   DEVICE_UID = WiFi.macAddress();
@@ -320,6 +330,124 @@ void setup() {
 }
 
 // ============================================================
+// OFFLINE QUEUE — Save logs to SPIFFS when WiFi is down
+// ============================================================
+void saveToQueue(String rfidUid, String action, unsigned long ts, String photoB64) {
+  if (!SPIFFS.exists(OFFLINE_QUEUE_FILE)) {
+    File f = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
+    if (f) f.close();
+  }
+  
+  File queueFile = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_APPEND);
+  if (!queueFile) {
+    Serial.println("[QUEUE] Failed to open queue file");
+    return;
+  }
+  
+  DynamicJsonDocument doc(1024);
+  doc["rfid_uid"] = rfidUid;
+  doc["action"] = action;
+  doc["timestamp"] = ts;
+  doc["device_event_id"] = String(eventCounter++);
+  if (photoB64.length() > 0) doc["photo_b64"] = photoB64;
+  
+  String line;
+  serializeJson(doc, line);
+  queueFile.println(line);
+  queueFile.close();
+  
+  Serial.println("[QUEUE] Saved offline (total: " + String(countQueuedLogs()) + ")");
+}
+
+int countQueuedLogs() {
+  if (!SPIFFS.exists(OFFLINE_QUEUE_FILE)) return 0;
+  File f = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
+  if (!f) return 0;
+  int count = 0;
+  while (f.available()) {
+    f.readStringUntil('\n');
+    count++;
+  }
+  f.close();
+  return count;
+}
+
+void syncOfflineQueue() {
+  if (!SPIFFS.exists(OFFLINE_QUEUE_FILE)) return;
+  
+  File queueFile = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
+  if (!queueFile) return;
+  
+  int synced = 0;
+  int failed = 0;
+  String tempLines = "";
+  
+  Serial.println("[QUEUE] Syncing offline logs...");
+  
+  while (queueFile.available() && synced < SYNC_MAX_PER_CYCLE) {
+    String line = queueFile.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) continue;
+    
+    DynamicJsonDocument doc(1024);
+    if (deserializeJson(doc, line) != DeserializationError::Ok) {
+      failed++;
+      continue;
+    }
+    
+    // Build submit-log payload
+    DynamicJsonDocument submitDoc(2048);
+    submitDoc["device_uid"] = DEVICE_UID;
+    submitDoc["device_secret"] = DEVICE_SECRET;
+    submitDoc["rfid_uid"] = doc["rfid_uid"].as<String>();
+    submitDoc["action"] = doc["action"].as<String>();
+    submitDoc["timestamp"] = timestampToISO(doc["timestamp"].as<unsigned long>());
+    submitDoc["device_event_id"] = doc["device_event_id"].as<String>();
+    if (doc.containsKey("photo_b64")) {
+      submitDoc["photo_b64"] = doc["photo_b64"].as<String>();
+    }
+    
+    String body;
+    serializeJson(submitDoc, body);
+    
+    HTTPClient http;
+    http.begin(SUPABASE_URL + "/functions/v1/submit-log");
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(HTTP_TIMEOUT_MS);
+    
+    int code = http.POST(body);
+    http.end();
+    
+    if (code == 200 || code == 201) {
+      synced++;
+    } else {
+      tempLines += line + "\n";
+      failed++;
+    }
+    
+    esp_task_wdt_reset();
+  }
+  
+  // Read remaining lines that weren't processed
+  while (queueFile.available()) {
+    tempLines += queueFile.readStringUntil('\n') + "\n";
+  }
+  queueFile.close();
+  
+  // Rewrite queue file with failed/unprocessed logs
+  SPIFFS.remove(OFFLINE_QUEUE_FILE);
+  if (tempLines.length() > 0) {
+    File f = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
+    if (f) {
+      f.print(tempLines);
+      f.close();
+    }
+  }
+  
+  Serial.println("[QUEUE] Synced: " + String(synced) + " | Failed: " + String(failed) + " | Remaining: " + String(countQueuedLogs()));
+}
+
+// ============================================================
 // LOOP
 // ============================================================
 void loop() {
@@ -378,12 +506,23 @@ void loop() {
   }
 
   if (millis() - lastSync > 300000) {
-    if (WiFi.status() == WL_CONNECTED) { syncPendingLogs(); downloadUsers(); }
+    if (WiFi.status() == WL_CONNECTED) { 
+      syncOfflineQueue();  // Sync offline queue first
+      syncPendingLogs(); 
+      downloadUsers(); 
+    }
     lastSync = millis();
   }
 
   if (millis() - lastWifi > 60000) {
-    if (WiFi.status() != WL_CONNECTED) connectWiFi();
+    if (WiFi.status() != WL_CONNECTED) {
+      connectWiFi();
+      // If WiFi just reconnected, sync offline queue immediately
+      if (WiFi.status() == WL_CONNECTED && countQueuedLogs() > 0) {
+        Serial.println("[WIFI] Reconnected - syncing offline queue");
+        syncOfflineQueue();
+      }
+    }
     lastWifi = millis();
   }
 
@@ -588,6 +727,14 @@ String sendCaptureCommand(String employeeId, unsigned long ts) {
 // LOGGING
 // ============================================================
 void logAttendance(User* u, String action, String photo, unsigned long ts) {
+  // If WiFi is down, save to offline queue instead of trying to sync immediately
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[ATT] WiFi down - saving to offline queue");
+    saveToQueue(u->rfid_uid, action, ts, photo);
+    return;
+  }
+  
+  // WiFi available - log to CAM for immediate sync
   String eventId = generateEventId(u->rfid_uid, ts);
   DynamicJsonDocument doc(512);
   doc["user_id"]=u->user_id; doc["employee_id"]=u->employee_id;
@@ -751,7 +898,12 @@ void connectWiFi() {
   WiFi.setSleep(false); WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("[WiFi] Connecting");
   int att=0;
-  while (WiFi.status()!=WL_CONNECTED&&att<20) { delay(500); Serial.print("."); att++; }
+  while (WiFi.status()!=WL_CONNECTED&&att<20) { 
+    delay(500); 
+    Serial.print("."); 
+    att++; 
+    esp_task_wdt_reset();  // Reset watchdog during WiFi connection
+  }
   if (WiFi.status()==WL_CONNECTED) Serial.println(" "+WiFi.localIP().toString());
   else Serial.println(" OFFLINE");
 }

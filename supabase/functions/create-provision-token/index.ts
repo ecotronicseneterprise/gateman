@@ -24,27 +24,24 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    // Use Supabase's recommended auth pattern with getClaims()
+    // Create anon client with Authorization header from request
+    // Supabase gateway already validated the JWT - we just need to pass it through
+    const authHeader = req.headers.get('Authorization') || '';
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
     );
 
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      console.error('[create-provision-token] no Authorization header');
-      return errorResponse('Authorization header required', 401);
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claims, error: claimsErr } = await supabaseClient.auth.getClaims(token);
+    // Get current user - this uses the JWT that was already validated by the gateway
+    const { data: { user }, error: userErr } = await supabaseClient.auth.getUser();
     
-    if (claimsErr || !claims?.claims?.sub) {
-      console.error('[create-provision-token] invalid JWT:', claimsErr?.message);
-      return errorResponse('Invalid or expired session', 401);
+    if (userErr || !user) {
+      console.error('[create-provision-token] auth failed:', userErr?.message);
+      return errorResponse('Unauthorized - please sign in', 401);
     }
 
-    const userId = claims.claims.sub;
+    const userId = user.id;
     console.log('[create-provision-token] authenticated user:', userId);
 
     // Use service role for privileged operations

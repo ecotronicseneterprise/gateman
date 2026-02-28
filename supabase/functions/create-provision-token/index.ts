@@ -24,20 +24,26 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    // Supabase Edge Functions automatically extract JWT and make it available
-    // Use service role client to verify the user from the JWT
-    const supabase = createClient(
+    // Create Supabase client with anon key to use the user's JWT from the request
+    const authHeader = req.headers.get('Authorization');
+    const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-      { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } }
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader || '' } } }
     );
 
-    // Get user from JWT (Supabase automatically validates it)
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    // Get authenticated user from JWT
+    const { data: { user }, error: authErr } = await supabaseClient.auth.getUser();
     if (authErr || !user) {
-      console.error('[create-provision-token] auth failed:', authErr?.message);
+      console.error('[create-provision-token] auth failed:', authErr?.message || 'No user');
       return errorResponse('Invalid or expired session', 401);
     }
+
+    // Use service role for privileged operations
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
 
     const { device_name, organization_id } = await req.json();
     if (!organization_id) {

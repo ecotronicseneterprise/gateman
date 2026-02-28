@@ -143,38 +143,40 @@ Deno.serve(async (req: Request) => {
     const wasDuplicate = !inserted && !insertErr;
     const logId = inserted?.id;
 
-    // 6. Upload photo if present and log was newly inserted
-    if (photo_base64 && logId) {
-      try {
-        const photoBytes = base64Decode(photo_base64);
-        const photoPath = `${device.organization_id}/${device.id}/${logId}.jpg`;
-
-        const { error: uploadErr } = await supabase.storage
-          .from('attendance-photos')
-          .upload(photoPath, photoBytes, {
-            contentType: photo_mime || 'image/jpeg',
-            upsert: false,
-          });
-
-        if (!uploadErr) {
-          await supabase
-            .from('attendance_logs')
-            .update({ photo_url: photoPath })
-            .eq('id', logId);
-        } else {
-          console.error('Photo upload failed:', uploadErr.message);
-          // Non-fatal — log was inserted, photo can be retried
-        }
-      } catch (photoErr) {
-        console.error('Photo processing error:', photoErr);
-        // Non-fatal — do not fail the entire request for photo issues
-      }
-    }
-
     if (insertErr) {
       console.error('Attendance insert error:', insertErr);
       console.error('Insert error details:', JSON.stringify(insertErr, null, 2));
       return errorResponse(`Failed to insert attendance log: ${insertErr.message || 'Unknown error'}`, 500);
+    }
+
+    // 6. Upload photo if present and log was newly inserted (non-blocking)
+    if (photo_base64 && logId) {
+      // Fire and forget - don't block response
+      (async () => {
+        try {
+          const photoBytes = base64Decode(photo_base64);
+          const photoPath = `${device.organization_id}/${device.id}/${logId}.jpg`;
+
+          const { error: uploadErr } = await supabase.storage
+            .from('attendance-photos')
+            .upload(photoPath, photoBytes, {
+              contentType: photo_mime || 'image/jpeg',
+              upsert: false,
+            });
+
+          if (!uploadErr) {
+            await supabase
+              .from('attendance_logs')
+              .update({ photo_url: photoPath })
+              .eq('id', logId);
+            console.log(`[submit-log] photo uploaded | log_id=${logId}`);
+          } else {
+            console.error('Photo upload failed:', uploadErr.message);
+          }
+        } catch (photoErr) {
+          console.error('Photo processing error:', photoErr);
+        }
+      })();
     }
 
     if (!wasDuplicate && logId) {

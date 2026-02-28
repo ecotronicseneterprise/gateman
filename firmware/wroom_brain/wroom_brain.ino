@@ -605,6 +605,7 @@ void handleEnroll(String uid) {
     HTTPClient http;
     http.begin(SUPABASE_URL + "/functions/v1/device-enroll");
     http.addHeader("Content-Type","application/json");
+    http.addHeader("apikey", SUPABASE_ANON_KEY);
     http.setTimeout(HTTP_TIMEOUT_MS);
     int code = http.POST(body);
     String resp = http.getString();

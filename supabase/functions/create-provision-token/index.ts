@@ -24,21 +24,18 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return errorResponse('Authorization header required', 401);
-    }
-
-    // Create client with user's JWT to check identity
-    const supabaseUser = createClient(
+    // Supabase Edge Functions automatically extract JWT and make it available
+    // Use service role client to verify the user from the JWT
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } }
     );
 
-    // Verify user session
-    const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
+    // Get user from JWT (Supabase automatically validates it)
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
     if (authErr || !user) {
+      console.error('[create-provision-token] auth failed:', authErr?.message);
       return errorResponse('Invalid or expired session', 401);
     }
 
@@ -46,12 +43,6 @@ Deno.serve(async (req: Request) => {
     if (!organization_id) {
       return errorResponse('organization_id required', 400);
     }
-
-    // Use service role for privileged operations
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
 
     // 1. Verify user is owner or admin of the org
     const { data: membership } = await supabase

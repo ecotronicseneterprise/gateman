@@ -24,21 +24,26 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    // Create anon client with Authorization header from request
-    // Supabase gateway already validated the JWT - we just need to pass it through
-    const authHeader = req.headers.get('Authorization') || '';
+    const { device_name, organization_id, access_token } = await req.json();
+    
+    if (!access_token) {
+      console.error('[create-provision-token] no access_token in request body');
+      return errorResponse('Unauthorized - access_token required', 401);
+    }
+
+    // Create anon client with access token from request body
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: `Bearer ${access_token}` } } }
     );
 
-    // Get current user - this uses the JWT that was already validated by the gateway
+    // Get current user using the access token
     const { data: { user }, error: userErr } = await supabaseClient.auth.getUser();
     
     if (userErr || !user) {
       console.error('[create-provision-token] auth failed:', userErr?.message);
-      return errorResponse('Unauthorized - please sign in', 401);
+      return errorResponse('Unauthorized - invalid or expired session', 401);
     }
 
     const userId = user.id;
@@ -49,8 +54,6 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
-
-    const { device_name, organization_id } = await req.json();
     if (!organization_id) {
       return errorResponse('organization_id required', 400);
     }

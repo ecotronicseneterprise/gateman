@@ -1303,11 +1303,14 @@ async function generateProvisionToken() {
     const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-provision-token`, {
       method: 'POST',
       headers: { 
-        'Authorization': `Bearer ${session.access_token}`,
         'apikey': SUPABASE_ANON_KEY,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ device_name: deviceName || 'New Device', organization_id: currentOrgId })
+      body: JSON.stringify({ 
+        device_name: deviceName || 'New Device', 
+        organization_id: currentOrgId,
+        access_token: session.access_token  // Send token in body as workaround
+      })
     });
     const r = await resp.json();
     if (!resp.ok) { showToast(r?.error || 'Failed to generate token', 'error'); return; }

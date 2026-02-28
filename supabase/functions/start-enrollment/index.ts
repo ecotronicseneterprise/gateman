@@ -16,29 +16,19 @@ serve(async (req: Request) => {
   if (corsResp) return corsResp;
 
   try {
-    // Verify JWT
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return errorResponse("missing authorization", 401);
-
     const supabase = getSupabaseAdmin();
-
-    // Verify the caller is an authenticated user
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !user) return errorResponse("unauthorized", 401);
-
     const body = await req.json();
-    const { user_id, device_id, organization_id } = body;
+    const { user_id, device_id, organization_id, caller_user_id } = body;
 
-    if (!user_id || !device_id || !organization_id) {
-      return errorResponse("missing fields: user_id, device_id, organization_id", 400);
+    if (!user_id || !device_id || !organization_id || !caller_user_id) {
+      return errorResponse("missing fields: user_id, device_id, organization_id, caller_user_id", 400);
     }
 
     // Verify caller is admin/owner of this org
     const { data: membership } = await supabase
       .from("org_members")
       .select("role")
-      .eq("user_id", user.id)
+      .eq("user_id", caller_user_id)
       .eq("organization_id", organization_id)
       .in("role", ["owner", "admin"])
       .maybeSingle();
@@ -87,7 +77,7 @@ serve(async (req: Request) => {
     auditLog(supabase, {
       organization_id,
       actor_type: "user",
-      actor_id: user.id,
+      actor_id: caller_user_id,
       action: "enrollment.initiated",
       resource_type: "enrollment_queue",
       resource_id: enroll.id,

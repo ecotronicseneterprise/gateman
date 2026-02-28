@@ -1150,8 +1150,13 @@ async function startEnrollment() {
 
     const resp = await fetch(`${SUPABASE_URL}/functions/v1/start-enrollment`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, device_id: deviceId, organization_id: currentOrgId })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        user_id: userId, 
+        device_id: deviceId, 
+        organization_id: currentOrgId,
+        caller_user_id: session.user.id 
+      })
     });
     const r = await resp.json();
     if (!resp.ok) { showToast(r?.error || 'Failed to start enrollment', 'error'); return; }

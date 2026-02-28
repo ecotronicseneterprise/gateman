@@ -1,5 +1,13 @@
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { compare } from 'https://deno.land/x/bcrypt@v0.4.1/mod.ts';
+
+// SHA-256 hash function (matches device-provision)
+async function hashSecret(secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(secret);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 export function getSupabaseAdmin(): SupabaseClient {
   return createClient(
@@ -39,7 +47,9 @@ export async function authenticateDevice(
 
   if (error || !device) return null;
 
-  const secretValid = await compare(deviceSecret, device.device_secret);
+  // Hash the provided secret and compare with stored hash
+  const hashedSecret = await hashSecret(deviceSecret);
+  const secretValid = hashedSecret === device.device_secret;
   if (!secretValid) return null;
 
   // Update last_seen (fire-and-forget)

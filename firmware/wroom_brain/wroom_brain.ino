@@ -72,7 +72,7 @@ Preferences preferences;
 #define MAX_USERS         100
 #define CAM_TIMEOUT_MS    8000
 #define DUPLICATE_WINDOW  5000   // ms — ignore same card within 5s
-#define WDT_TIMEOUT_S     30     // reboot if stuck 30s
+#define WDT_TIMEOUT_S     60     // reboot if stuck 60s (increased for stability)
 #define HEARTBEAT_MS      60000
 #define SYNC_MAX_PER_CYCLE 20    // Max records to sync per cycle (guard watchdog)
 #define HTTP_TIMEOUT_MS   8000   // Per-request timeout for submit-log
@@ -841,6 +841,9 @@ void syncPendingLogs() {
 // USERS
 // ============================================================
 void downloadUsers() {
+  Serial.print("[USERS] Downloading... ");
+  esp_task_wdt_reset();
+  
   // POST to get-users Edge Function with device credentials in body
   DynamicJsonDocument authDoc(256);
   authDoc["device_uid"] = DEVICE_UID;
@@ -851,7 +854,11 @@ void downloadUsers() {
   http.begin(SUPABASE_URL + "/functions/v1/get-users");
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(8000);
+  
+  esp_task_wdt_reset();
   int code = http.POST(authBody);
+  esp_task_wdt_reset();
+  
   if (code==200) {
     String payload=http.getString();
     DynamicJsonDocument doc(8192);
@@ -862,11 +869,15 @@ void downloadUsers() {
         users[userCount]={u["user_id"],u["name"],u["employee_id"],u["department"],u["rfid_uid"],"",0};
         userCount++;
       }
-      Serial.println("[USERS] "+String(userCount)+" loaded");
+      Serial.println(String(userCount)+" loaded");
       camSerial.println("SAVE_USERS:"+payload);
     }
-  } else { Serial.println("[USERS] HTTP "+String(code)); loadUsersFromCache(); }
+  } else { 
+    Serial.println("HTTP "+String(code)); 
+    loadUsersFromCache(); 
+  }
   http.end();
+  esp_task_wdt_reset();
 }
 
 void loadUsersFromCache() {
@@ -895,17 +906,24 @@ void loadUsersFromCache() {
 // WIFI
 // ============================================================
 void connectWiFi() {
-  WiFi.setSleep(false); WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.persistent(true);
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("[WiFi] Connecting");
   int att=0;
   while (WiFi.status()!=WL_CONNECTED&&att<20) { 
     delay(500); 
     Serial.print("."); 
     att++; 
-    esp_task_wdt_reset();  // Reset watchdog during WiFi connection
+    esp_task_wdt_reset();
   }
-  if (WiFi.status()==WL_CONNECTED) Serial.println(" "+WiFi.localIP().toString());
-  else Serial.println(" OFFLINE");
+  if (WiFi.status()==WL_CONNECTED) {
+    Serial.println(" "+WiFi.localIP().toString());
+    Serial.println("[WiFi] Auto-reconnect enabled, sleep disabled");
+  } else {
+    Serial.println(" OFFLINE");
+  }
 }
 
 // ============================================================
@@ -914,9 +932,14 @@ void connectWiFi() {
 void syncNTPTime() {
   configTime(GMT_OFFSET, DAYLIGHT, NTP_SERVER);
   struct tm ti; int att=0;
-  while (!getLocalTime(&ti)&&att<10) { delay(500); att++; }
+  while (!getLocalTime(&ti)&&att<10) { 
+    delay(500); 
+    att++; 
+    esp_task_wdt_reset();
+  }
   char buf[32]; strftime(buf,32,"%Y-%m-%d %H:%M:%S",&ti);
   Serial.println("[NTP] "+String(buf));
+  esp_task_wdt_reset();
 }
 
 unsigned long getEpochTime() { time_t now; time(&now); return (unsigned long)now; }

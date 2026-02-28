@@ -24,44 +24,34 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    // Supabase Edge Functions automatically validate JWT and inject user context
-    // We can access it via the service role client by checking auth.users table
+    // Use Supabase's recommended auth pattern with getClaims()
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!
+    );
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('[create-provision-token] no Authorization header');
+      return errorResponse('Authorization header required', 401);
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: claims, error: claimsErr } = await supabaseClient.auth.getClaims(token);
+    
+    if (claimsErr || !claims?.claims?.sub) {
+      console.error('[create-provision-token] invalid JWT:', claimsErr?.message);
+      return errorResponse('Invalid or expired session', 401);
+    }
+
+    const userId = claims.claims.sub;
+    console.log('[create-provision-token] authenticated user:', userId);
+
+    // Use service role for privileged operations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
-
-    // Extract JWT from Authorization header to get user ID
-    // Even though header is stripped from req.headers, we can parse the body's context
-    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization') || '';
-    
-    let userId: string | null = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        // Decode JWT to extract user ID (we don't need to verify - Supabase already did)
-        const token = authHeader.replace('Bearer ', '');
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1]));
-          userId = payload.sub;
-        }
-      } catch (e) {
-        console.error('[create-provision-token] JWT decode failed:', e);
-      }
-    }
-
-    if (!userId) {
-      console.error('[create-provision-token] no user ID found in JWT');
-      return errorResponse('Invalid or expired session', 401);
-    }
-
-    // Verify user exists in auth.users
-    const { data: user, error: userErr } = await supabase.auth.admin.getUserById(userId);
-    if (userErr || !user) {
-      console.error('[create-provision-token] user not found:', userId);
-      return errorResponse('Invalid or expired session', 401);
-    }
 
     const { device_name, organization_id } = await req.json();
     if (!organization_id) {
@@ -73,25 +63,25 @@ Deno.serve(async (req: Request) => {
       .from('org_members')
       .select('role')
       .eq('organization_id', organization_id)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .in('role', ['owner', 'admin'])
       .single();
 
     if (!membership) {
-      console.warn(`[create-provision-token] unauthorized | user=${user.id} org=${organization_id}`);
+      console.warn(`[create-provision-token] unauthorized | user=${userId} org=${organization_id}`);
       return errorResponse('Not authorized: must be org owner or admin', 403);
     }
 
     // Rate limit: max 10 tokens per org per hour
     const rateLimited = await checkRateLimit(supabase, {
       organization_id: organization_id,
-      actor_id: user.id,
+      actor_id: userId,
       action: 'provision_token.created',
       maxCount: 10,
       windowMinutes: 60,
     });
     if (rateLimited) {
-      console.warn(`[create-provision-token] rate limited | org=${organization_id} user=${user.id}`);
+      console.warn(`[create-provision-token] rate limited | org=${organization_id} user=${userId}`);
       return errorResponse('Rate limit exceeded. Max 10 provisioning tokens per hour.', 429);
     }
 
@@ -139,7 +129,7 @@ Deno.serve(async (req: Request) => {
         token: token,
         device_name: device_name || null,
         expires_at: expiresAt,
-        created_by: user.id,
+        created_by: userId,
       });
 
     if (insertErr) {
@@ -156,12 +146,12 @@ Deno.serve(async (req: Request) => {
 
     const provisionUrl = `${supabaseUrl}/functions/v1/device-provision`;
 
-    console.log(`[create-provision-token] success | org=${organization_id} user=${user.id} token_prefix=${token.substring(0, 8)}...`);
+    console.log(`[create-provision-token] success | org=${organization_id} user=${userId} token_prefix=${token.substring(0, 8)}...`);
 
     auditLog(supabase, {
       organization_id: organization_id,
       actor_type: 'user',
-      actor_id: user.id,
+      actor_id: userId,
       action: 'provision_token.created',
       resource_type: 'provision_token',
       metadata: { device_name: device_name, expires_at: expiresAt },

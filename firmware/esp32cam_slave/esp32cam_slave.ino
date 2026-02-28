@@ -144,16 +144,17 @@ void loop() {
     else if(cmd == "GET_HEALTH") handleGetHealth();
   }
 
-  if (millis()-lastCmdMs > IDLE_SLEEP_MS) {
-    if (!wroomSerial.available()) {
-      Serial.println("[SLEEP]");
-      Serial.flush();
-      esp_sleep_enable_uart_wakeup(1);
-      esp_light_sleep_start();
-      lastCmdMs = millis();
-      Serial.println("[WAKE]");
-    }
-  }
+  // Sleep disabled - keep CAM always responsive for UART commands
+  // if (millis()-lastCmdMs > IDLE_SLEEP_MS) {
+  //   if (!wroomSerial.available()) {
+  //     Serial.println("[SLEEP]");
+  //     Serial.flush();
+  //     esp_sleep_enable_uart_wakeup(1);
+  //     esp_light_sleep_start();
+  //     lastCmdMs = millis();
+  //     Serial.println("[WAKE]");
+  //   }
+  // }
 
   delay(10);
 }

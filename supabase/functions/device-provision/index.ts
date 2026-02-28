@@ -26,6 +26,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { device_uid, provisioning_token } = await req.json();
+    console.log('[device-provision] request:', { device_uid, token_prefix: provisioning_token?.substring(0, 8) });
 
     if (!device_uid || !provisioning_token) {
       return errorResponse('device_uid and provisioning_token required', 400);
@@ -42,8 +43,10 @@ Deno.serve(async (req: Request) => {
       .gt('expires_at', new Date().toISOString())
       .single();
 
+    console.log('[device-provision] token lookup:', { found: !!token, error: tokenErr?.message });
+
     if (tokenErr || !token) {
-      console.warn(`[device-provision] invalid token attempt | device_uid=${device_uid}`);
+      console.warn(`[device-provision] invalid token attempt | device_uid=${device_uid} | err=${tokenErr?.message}`);
       return errorResponse('Invalid or expired provisioning token', 401);
     }
 

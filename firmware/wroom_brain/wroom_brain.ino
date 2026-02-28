@@ -167,6 +167,7 @@ void provisionDevice(String token) {
   String provUrl = String(SUPABASE_URL.length() > 0 ? SUPABASE_URL : "https://ueobebsgheecclwcbigy.supabase.co");
   http.begin(provUrl + "/functions/v1/device-provision");
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", SUPABASE_ANON_KEY);
   http.setTimeout(10000);
 
   int code = http.POST(body);

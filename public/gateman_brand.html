@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gateman — Brand Identity</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: #F8F9FB;
+    color: #0F172A;
+    padding: 64px 48px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    margin-bottom: 72px;
+  }
+  .header-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 3px;
+    color: #94A3B8;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .header-title {
+    font-size: 28px;
+    font-weight: 500;
+    color: #0F172A;
+    letter-spacing: -0.5px;
+  }
+  .header-sub {
+    font-size: 14px;
+    color: #64748B;
+    margin-top: 6px;
+  }
+  .divider {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, #4F46E5, #0EA5E9);
+    margin-top: 20px;
+    border-radius: 2px;
+  }
+
+  /* ── Section ── */
+  .section {
+    margin-bottom: 64px;
+  }
+  .section-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 2.5px;
+    color: #CBD5E1;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  /* ── Logo cells ── */
+  .logo-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logo-cell {
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 48px 32px;
+    gap: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .logo-cell.light  { background: #FFFFFF; border: 1px solid #E2E8F0; }
+  .logo-cell.dark   { background: #0F172A; }
+  .logo-cell.ink    { background: #1E293B; }
+  .logo-cell.grad   {
+    background: linear-gradient(135deg, #4F46E5 0%, #0EA5E9 100%);
+  }
+  .logo-cell.warm   { background: #F1F5F9; border: 1px solid #E2E8F0; }
+
+  .cell-label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #94A3B8;
+    font-weight: 500;
+  }
+  .logo-cell.dark  .cell-label,
+  .logo-cell.ink   .cell-label,
+  .logo-cell.grad  .cell-label { color: rgba(255,255,255,0.3); }
+
+  .logo-cell svg { display: block; }
+
+  /* ── Colour swatches ── */
+  .swatches {
+    display: flex;
+    gap: 12px;
+    margin-top: 0;
+  }
+  .swatch {
+    width: 80px;
+  }
+  .swatch-color {
+    height: 56px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+  .swatch-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #0F172A;
+    margin-bottom: 2px;
+  }
+  .swatch-hex {
+    font-size: 11px;
+    color: #94A3B8;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  /* ── Spacing ── */
+  .wide  { min-width: 480px; }
+  .sqr   { min-width: 200px; min-height: 200px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-label">Brand Identity System</div>
+  <div class="header-title">Gateman</div>
+  <div class="header-sub">Access Control Intelligence</div>
+  <div class="divider"></div>
+</div>
+
+<!-- PRIMARY LOGOS -->
+<div class="section">
+  <div class="section-label">Primary Logo</div>
+  <div class="logo-row">
+
+    <!-- Light BG — primary -->
+    <div class="logo-cell light wide">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 88" fill="none" width="340" height="79">
+        <defs>
+          <linearGradient id="lg1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#4F46E5"/>
+            <stop offset="100%" stop-color="#0EA5E9"/>
+          </linearGradient>
+          <linearGradient id="lg1e" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#0EA5E9"/>
+            <stop offset="100%" stop-color="#4F46E5"/>
+          </linearGradient>
+        </defs>
+        <!-- Left pillar -->
+        <rect x="4"  y="4"  width="10" height="72" rx="5" fill="url(#lg1)"/>
+        <!-- Right pillar -->
+        <rect x="58" y="4"  width="10" height="72" rx="5" fill="url(#lg1)"/>
+        <!-- Top bridge -->
+        <rect x="4"  y="4"  width="64" height="10" rx="5" fill="url(#lg1)"/>
+        <!-- Scan arc -->
+
+        <!-- Wordmark -->
+        <text x="94" y="61" font-family="'Helvetica Neue', 'Segoe UI', system-ui, sans-serif" font-size="46" font-weight="600" letter-spacing="-1.8" fill="#0F172A">gateman</text>
+      </svg>
+      <div class="cell-label">Light · Primary</div>
+    </div>
+
+    <!-- Dark BG — reversed -->
+    <div class="logo-cell dark wide">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 88" fill="none" width="340" height="79">
+        <defs>
+          <linearGradient id="lg2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#6366F1"/>
+            <stop offset="100%" stop-color="#38BDF8"/>
+          </linearGradient>
+          <linearGradient id="lg2e" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#38BDF8"/>
+            <stop offset="100%" stop-color="#6366F1"/>
+          </linearGradient>
+        </defs>
+        <rect x="4"  y="4"  width="10" height="72" rx="5" fill="url(#lg2)"/>
+        <rect x="58" y="4"  width="10" height="72" rx="5" fill="url(#lg2)"/>
+        <rect x="4"  y="4"  width="64" height="10" rx="5" fill="url(#lg2)"/>
+
+        <text x="94" y="61" font-family="'Helvetica Neue', 'Segoe UI', system-ui, sans-serif" font-size="46" font-weight="600" letter-spacing="-1.8" fill="#F8FAFC">gateman</text>
+      </svg>
+      <div class="cell-label">Dark · Reversed</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ICON MARKS -->
+<div class="section">
+  <div class="section-label">Icon Mark</div>
+  <div class="logo-row">
+
+    <!-- Icon on white -->
+    <div class="logo-cell light sqr">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 88" fill="none" width="80" height="98">
+        <defs>
+          <linearGradient id="lg3" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#4F46E5"/>
+            <stop offset="100%" stop-color="#0EA5E9"/>
+          </linearGradient>
+          <linearGradient id="lg3e" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#0EA5E9"/>
+            <stop offset="100%" stop-color="#4F46E5"/>
+          </linearGradient>
+        </defs>
+        <rect x="0"  y="0"  width="14" height="88" rx="7" fill="url(#lg3)"/>
+        <rect x="58" y="0"  width="14" height="88" rx="7" fill="url(#lg3)"/>
+        <rect x="0"  y="0"  width="72" height="14" rx="7" fill="url(#lg3)"/>
+
+      </svg>
+      <div class="cell-label">White</div>
+    </div>
+
+    <!-- Icon on dark -->
+    <div class="logo-cell dark sqr">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 88" fill="none" width="80" height="98">
+        <defs>
+          <linearGradient id="lg4" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#6366F1"/>
+            <stop offset="100%" stop-color="#38BDF8"/>
+          </linearGradient>
+          <linearGradient id="lg4e" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#38BDF8"/>
+            <stop offset="100%" stop-color="#6366F1"/>
+          </linearGradient>
+        </defs>
+        <rect x="0"  y="0"  width="14" height="88" rx="7" fill="url(#lg4)"/>
+        <rect x="58" y="0"  width="14" height="88" rx="7" fill="url(#lg4)"/>
+        <rect x="0"  y="0"  width="72" height="14" rx="7" fill="url(#lg4)"/>
+
+      </svg>
+      <div class="cell-label">Dark</div>
+    </div>
+
+    <!-- Icon on gradient -->
+    <div class="logo-cell grad sqr">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 88" fill="none" width="80" height="98">
+        <rect x="0"  y="0"  width="14" height="88" rx="7" fill="rgba(255,255,255,0.95)"/>
+        <rect x="58" y="0"  width="14" height="88" rx="7" fill="rgba(255,255,255,0.95)"/>
+        <rect x="0"  y="0"  width="72" height="14" rx="7" fill="rgba(255,255,255,0.95)"/>
+
+      </svg>
+      <div class="cell-label">Gradient</div>
+    </div>
+
+    <!-- Monochrome black -->
+    <div class="logo-cell warm sqr">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 88" fill="none" width="80" height="98">
+        <rect x="0"  y="0"  width="14" height="88" rx="7" fill="#0F172A"/>
+        <rect x="58" y="0"  width="14" height="88" rx="7" fill="#0F172A"/>
+        <rect x="0"  y="0"  width="72" height="14" rx="7" fill="#0F172A"/>
+
+      </svg>
+      <div class="cell-label">Mono Black</div>
+    </div>
+
+    <!-- Monochrome white -->
+    <div class="logo-cell ink sqr">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 88" fill="none" width="80" height="98">
+        <rect x="0"  y="0"  width="14" height="88" rx="7" fill="rgba(255,255,255,0.95)"/>
+        <rect x="58" y="0"  width="14" height="88" rx="7" fill="rgba(255,255,255,0.95)"/>
+        <rect x="0"  y="0"  width="72" height="14" rx="7" fill="rgba(255,255,255,0.95)"/>
+
+      </svg>
+      <div class="cell-label">Mono White</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- COMPACT / APP ICON -->
+<div class="section">
+  <div class="section-label">App Icon — 1:1 Square</div>
+  <div class="logo-row">
+
+    <!-- Rounded square app icon -->
+    <div class="logo-cell" style="background:transparent;padding:0;gap:12px;align-items:flex-start;">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none" width="120" height="120">
+        <defs>
+          <linearGradient id="appbg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#312E81"/>
+            <stop offset="100%" stop-color="#0C4A6E"/>
+          </linearGradient>
+          <linearGradient id="appmark" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#818CF8"/>
+            <stop offset="100%" stop-color="#38BDF8"/>
+          </linearGradient>
+          <linearGradient id="appdot" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#38BDF8"/>
+            <stop offset="100%" stop-color="#818CF8"/>
+          </linearGradient>
+          <clipPath id="rounded">
+            <rect width="120" height="120" rx="26"/>
+          </clipPath>
+        </defs>
+        <rect width="120" height="120" rx="26" fill="url(#appbg)"/>
+        <!-- Icon centered -->
+        <rect x="24" y="16" width="13" height="72" rx="6.5" fill="url(#appmark)"/>
+        <rect x="83" y="16" width="13" height="72" rx="6.5" fill="url(#appmark)"/>
+        <rect x="24" y="16" width="72" height="13" rx="6.5" fill="url(#appmark)"/>
+
+      </svg>
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none" width="80" height="80">
+        <defs>
+          <linearGradient id="appbg2" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4F46E5"/>
+            <stop offset="100%" stop-color="#0EA5E9"/>
+          </linearGradient>
+        </defs>
+        <rect width="120" height="120" rx="26" fill="url(#appbg2)"/>
+        <rect x="24" y="16" width="13" height="72" rx="6.5" fill="rgba(255,255,255,0.95)"/>
+        <rect x="83" y="16" width="13" height="72" rx="6.5" fill="rgba(255,255,255,0.95)"/>
+        <rect x="24" y="16" width="72" height="13" rx="6.5" fill="rgba(255,255,255,0.95)"/>
+
+      </svg>
+    </div>
+
+  </div>
+</div>
+
+<!-- COLOUR PALETTE -->
+<div class="section">
+  <div class="section-label">Colour Palette</div>
+  <div class="swatches">
+    <div class="swatch">
+      <div class="swatch-color" style="background:linear-gradient(135deg,#4F46E5,#0EA5E9)"></div>
+      <div class="swatch-name">Brand</div>
+      <div class="swatch-hex">Gradient</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#4F46E5"></div>
+      <div class="swatch-name">Indigo</div>
+      <div class="swatch-hex">#4F46E5</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#0EA5E9"></div>
+      <div class="swatch-name">Sky</div>
+      <div class="swatch-hex">#0EA5E9</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#0F172A"></div>
+      <div class="swatch-name">Ink</div>
+      <div class="swatch-hex">#0F172A</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#64748B"></div>
+      <div class="swatch-name">Slate</div>
+      <div class="swatch-hex">#64748B</div>
+    </div>
+    <div class="swatch">
+      <div class="swatch-color" style="background:#F8FAFC; border:1px solid #E2E8F0"></div>
+      <div class="swatch-name">White</div>
+      <div class="swatch-hex">#F8FAFC</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div style="margin-top:40px; padding-top:24px; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+  <div style="font-size:12px;color:#94A3B8">Gateman · Access Control Intelligence</div>
+  <div style="font-size:11px;color:#CBD5E1;letter-spacing:1px;text-transform:uppercase">Brand Identity · 2026</div>
+</div>
+
+</body>
+</html>

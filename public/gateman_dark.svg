@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" fill="none">
+  <defs>
+    <linearGradient id="pillar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <linearGradient id="sensor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0EA5E9"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- GATE MARK — 72×88 logical grid, rendered at 80% -->
+  <!-- Left pillar  -->  <rect x="8"  y="6"  width="12" height="78" rx="6"  fill="url(#pillar)"/>
+  <!-- Right pillar -->  <rect x="64" y="6"  width="12" height="78" rx="6"  fill="url(#pillar)"/>
+  <!-- Top bridge   -->  <rect x="8"  y="6"  width="68" height="12" rx="6"  fill="url(#pillar)"/>
+
+
+  <!-- WORDMARK -->
+  <text
+    x="106" y="68"
+    font-family="'Helvetica Neue', 'Segoe UI', system-ui, sans-serif"
+    font-size="48" font-weight="600" letter-spacing="-1.8"
+    fill="#F8FAFC"
+  >gateman</text>
+</svg>

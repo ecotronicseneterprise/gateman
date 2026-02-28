@@ -546,8 +546,7 @@ void handleUpdateUser(String cmd){
     return;
   }
 
-  content.remove(braceStart, braceEnd - braceStart + 1);
-  content.insert(braceStart, newData);
+  content = content.substring(0, braceStart) + newData + content.substring(braceEnd + 1);
 
   File wf = SD_MMC.open("/users.json", FILE_WRITE);
   if(!wf){

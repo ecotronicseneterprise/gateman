@@ -35,6 +35,9 @@ const char* NTP_SERVER    = "pool.ntp.org";
 const long  GMT_OFFSET    = 3600;
 const int   DAYLIGHT      = 0;
 
+// Supabase anon key (public, safe to embed)
+const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlb2JlYnNnaGVlY2Nsd2NiaWd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU0MDU0NzMsImV4cCI6MjA1MDk4MTQ3M30.Qrtu1QaKNEy_wKPPCKQlU1MXwSPZVQNMECLPZqhHQRo";
+
 // ============================================================
 // DEVICE IDENTITY — loaded from NVS after provisioning
 // ============================================================

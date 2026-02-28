@@ -258,25 +258,34 @@ void setup() {
     digitalWrite(STATUS_LED, LOW);  delay(200);
   }
 
-  // Derive hardware UID immediately
+  // Derive hardware UID immediately (need WiFi mode set first)
+  WiFi.mode(WIFI_STA);
   DEVICE_UID = WiFi.macAddress();
   Serial.println("[HW] MAC=" + DEVICE_UID);
+  esp_task_wdt_reset();
 
   // UART to CAM
   camSerial.begin(9600, SERIAL_8N1, CAM_RX, CAM_TX);
   delay(500);
+  esp_task_wdt_reset();
 
-  // Verify CAM is alive
+  // Verify CAM is alive (non-blocking check)
+  Serial.print("[CAM] Checking... ");
   if (!pingCAM()) {
-    Serial.println("[CAM] WARNING: No response from ESP32-CAM. Check wiring and power.");
+    Serial.println("WARNING: No response. Check wiring.");
+  } else {
+    Serial.println("OK");
   }
+  esp_task_wdt_reset();
 
   // RFID
+  Serial.print("[RFID] Initializing... ");
   SPI.begin(RFID_SCK, RFID_MISO, RFID_MOSI, RFID_SS);
   rfid.PCD_Init();
   delay(100);
   byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
-  Serial.println(v==0x91||v==0x92 ? "[RFID] OK" : "[RFID] WARNING — check wiring");
+  Serial.println(v==0x91||v==0x92 ? "OK" : "WARNING — check wiring");
+  esp_task_wdt_reset();
 
   // WiFi
   connectWiFi();

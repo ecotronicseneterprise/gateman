@@ -66,13 +66,14 @@ void handleGetHealth();
 void setup() {
   Serial.begin(115200); delay(1000);
 
-  esp_task_wdt_config_t wdt_config = {
-    .timeout_ms = WDT_TIMEOUT_S * 1000,
-    .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
-    .trigger_panic = true
-  };
-  esp_task_wdt_init(&wdt_config);
-  esp_task_wdt_add(NULL);
+  // Watchdog disabled - was causing constant reboots
+  // esp_task_wdt_config_t wdt_config = {
+  //   .timeout_ms = WDT_TIMEOUT_S * 1000,
+  //   .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+  //   .trigger_panic = true
+  // };
+  // esp_task_wdt_init(&wdt_config);
+  // esp_task_wdt_add(NULL);
 
   Serial.println("\n============================");
   Serial.println("  EcoTronic CAM v2 (Pilot)");
@@ -123,7 +124,7 @@ void setup() {
 // LOOP
 // ============================================================
 void loop() {
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset(); // Watchdog disabled
 
   if (wroomSerial.available()) {
     String cmd = wroomSerial.readStringUntil('\n');

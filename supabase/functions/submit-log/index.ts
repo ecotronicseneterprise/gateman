@@ -173,7 +173,8 @@ Deno.serve(async (req: Request) => {
 
     if (insertErr) {
       console.error('Attendance insert error:', insertErr);
-      return errorResponse('Failed to insert attendance log', 500);
+      console.error('Insert error details:', JSON.stringify(insertErr, null, 2));
+      return errorResponse(`Failed to insert attendance log: ${insertErr.message || 'Unknown error'}`, 500);
     }
 
     if (!wasDuplicate && logId) {

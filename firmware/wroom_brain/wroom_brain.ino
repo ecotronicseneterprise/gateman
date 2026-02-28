@@ -214,7 +214,7 @@ void enterProvisioningMode() {
   Serial.println("[PROVISION] Paste provisioning token via Serial:");
   unsigned long start = millis();
   while (millis() - start < 300000) {  // 5-minute window
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();  // Watchdog disabled
     if (Serial.available()) {
       token = Serial.readStringUntil('\n');
       token.trim();
@@ -238,14 +238,14 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  // Watchdog — auto-reboot if code hangs
-  esp_task_wdt_config_t wdt_config = {
-    .timeout_ms = WDT_TIMEOUT_S * 1000,
-    .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
-    .trigger_panic = true
-  };
-  esp_task_wdt_init(&wdt_config);
-  esp_task_wdt_add(NULL);
+  // Watchdog — DISABLED (was causing constant resets)
+  // esp_task_wdt_config_t wdt_config = {
+  //   .timeout_ms = WDT_TIMEOUT_S * 1000,
+  //   .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+  //   .trigger_panic = true
+  // };
+  // esp_task_wdt_init(&wdt_config);
+  // esp_task_wdt_add(NULL);
 
   Serial.println("\n============================");
   Serial.println("  EcoTronic WROOM v3 (SaaS)");
@@ -266,18 +266,18 @@ void setup() {
   } else {
     Serial.println("[SPIFFS] OK - Offline queue enabled");
   }
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   // Derive hardware UID immediately (need WiFi mode set first)
   WiFi.mode(WIFI_STA);
   DEVICE_UID = WiFi.macAddress();
   Serial.println("[HW] MAC=" + DEVICE_UID);
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   // UART to CAM
   camSerial.begin(9600, SERIAL_8N1, CAM_RX, CAM_TX);
   delay(500);
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   // Verify CAM is alive (non-blocking check)
   Serial.print("[CAM] Checking... ");
@@ -286,7 +286,7 @@ void setup() {
   } else {
     Serial.println("OK");
   }
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   // RFID
   Serial.print("[RFID] Initializing... ");
@@ -295,10 +295,11 @@ void setup() {
   delay(100);
   byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
   Serial.println(v==0x91||v==0x92 ? "OK" : "WARNING — check wiring");
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   // WiFi
   connectWiFi();
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   // Check provisioning status
   if (!isProvisioned()) {
@@ -314,6 +315,7 @@ void setup() {
 
   // Load stored credentials from NVS
   loadCredentials();
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   if (WiFi.status() == WL_CONNECTED) {
     syncNTPTime();
@@ -322,11 +324,12 @@ void setup() {
   } else {
     loadUsersFromCache();
   }
+  // esp_task_wdt_reset();  // Watchdog disabled
 
   Serial.println("\n[READY] Tap a card...\n");
   Serial.println("[HEAP] Free: " + String(ESP.getFreeHeap()) + " bytes");
   blinkOK();
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 }
 
 // ============================================================
@@ -425,7 +428,7 @@ void syncOfflineQueue() {
       failed++;
     }
     
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();  // Watchdog disabled
   }
   
   // Read remaining lines that weren't processed
@@ -451,7 +454,7 @@ void syncOfflineQueue() {
 // LOOP
 // ============================================================
 void loop() {
-  esp_task_wdt_reset();  // Feed watchdog
+  // esp_task_wdt_reset();  // Watchdog disabled  // Feed watchdog
 
   // Auto-timeout enrollment mode (60s)
   if (enrollMode && millis() > enrollTimeout) {
@@ -819,7 +822,7 @@ void syncPendingLogs() {
     http.end();
 
     // CRITICAL: yield to watchdog and allow background tasks
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();  // Watchdog disabled
     delay(10);  // Prevent tight-loop heap fragmentation
   }
 
@@ -842,7 +845,7 @@ void syncPendingLogs() {
 // ============================================================
 void downloadUsers() {
   Serial.print("[USERS] Downloading... ");
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
   
   // POST to get-users Edge Function with device credentials in body
   DynamicJsonDocument authDoc(256);
@@ -855,9 +858,9 @@ void downloadUsers() {
   http.addHeader("Content-Type", "application/json");
   http.setTimeout(8000);
   
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
   int code = http.POST(authBody);
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
   
   if (code==200) {
     String payload=http.getString();
@@ -877,7 +880,7 @@ void downloadUsers() {
     loadUsersFromCache(); 
   }
   http.end();
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 }
 
 void loadUsersFromCache() {
@@ -916,7 +919,7 @@ void connectWiFi() {
     delay(500); 
     Serial.print("."); 
     att++; 
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();  // Watchdog disabled
   }
   if (WiFi.status()==WL_CONNECTED) {
     Serial.println(" "+WiFi.localIP().toString());
@@ -935,11 +938,11 @@ void syncNTPTime() {
   while (!getLocalTime(&ti)&&att<10) { 
     delay(500); 
     att++; 
-    esp_task_wdt_reset();
+    // esp_task_wdt_reset();  // Watchdog disabled
   }
   char buf[32]; strftime(buf,32,"%Y-%m-%d %H:%M:%S",&ti);
   Serial.println("[NTP] "+String(buf));
-  esp_task_wdt_reset();
+  // esp_task_wdt_reset();  // Watchdog disabled
 }
 
 unsigned long getEpochTime() { time_t now; time(&now); return (unsigned long)now; }

@@ -26,6 +26,7 @@
 #include <esp_task_wdt.h>
 #include <Preferences.h>
 #include <SPIFFS.h>
+#include "provision_portal.h"
 
 // ============================================================
 // CONFIGURATION — WiFi & NTP (still hardcoded per-site)
@@ -201,34 +202,25 @@ void provisionDevice(String token) {
 
 void enterProvisioningMode() {
   Serial.println("[PROVISION] Device not provisioned.");
-
-  // Pilot mode: use hardcoded token if available
-  String token = String(PILOT_PROVISION_TOKEN);
-  if (token.length() > 0) {
-    Serial.println("[PROVISION] Using pilot token...");
+  Serial.println("[PROVISION] Starting WiFi AP setup portal...");
+  
+  // Check if we have pending provisioning from portal
+  preferences.begin("gateman", false);
+  bool needsProv = preferences.getBool("needs_prov", false);
+  String token = preferences.getString("prov_token", "");
+  
+  if (needsProv && token.length() > 0) {
+    Serial.println("[PROVISION] Found pending token from portal");
+    preferences.putBool("needs_prov", false);
+    preferences.end();
     provisionDevice(token);
     return;
   }
+  preferences.end();
 
-  // Interactive mode: wait for token via Serial
-  Serial.println("[PROVISION] Paste provisioning token via Serial:");
-  unsigned long start = millis();
-  while (millis() - start < 300000) {  // 5-minute window
-    // esp_task_wdt_reset();  // Watchdog disabled
-    if (Serial.available()) {
-      token = Serial.readStringUntil('\n');
-      token.trim();
-      if (token.length() > 10) {
-        provisionDevice(token);
-        return;
-      }
-    }
-    // Slow blink to indicate provisioning mode
-    digitalWrite(STATUS_LED, HIGH); delay(500);
-    digitalWrite(STATUS_LED, LOW);  delay(500);
-  }
-  Serial.println("[PROVISION] Timeout. Rebooting...");
-  ESP.restart();
+  // Start captive portal for provisioning
+  startProvisioningPortal();
+  // Never returns - device reboots after provisioning
 }
 
 // ============================================================
@@ -297,21 +289,15 @@ void setup() {
   Serial.println(v==0x91||v==0x92 ? "OK" : "WARNING — check wiring");
   // esp_task_wdt_reset();  // Watchdog disabled
 
-  // WiFi
+  // Check provisioning status BEFORE connecting to WiFi
+  if (!isProvisioned()) {
+    enterProvisioningMode();
+    return;  // Never returns - device reboots after provisioning
+  }
+
+  // WiFi (only if provisioned)
   connectWiFi();
   // esp_task_wdt_reset();  // Watchdog disabled
-
-  // Check provisioning status
-  if (!isProvisioned()) {
-    if (WiFi.status() == WL_CONNECTED) {
-      enterProvisioningMode();
-    } else {
-      Serial.println("[PROVISION] Not provisioned and no WiFi. Rebooting in 30s...");
-      delay(30000);
-      ESP.restart();
-    }
-    return;  // Should not reach here (restart happens above)
-  }
 
   // Load stored credentials from NVS
   loadCredentials();
@@ -914,7 +900,18 @@ void connectWiFi() {
   WiFi.persistent(true);
   WiFi.setAutoReconnect(true);
   WiFi.setSleep(false);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
+  // Try to load WiFi credentials from NVS (saved by provisioning portal)
+  preferences.begin("gateman", true);
+  String savedSSID = preferences.getString("wifi_ssid", "");
+  String savedPass = preferences.getString("wifi_pass", "");
+  preferences.end();
+  
+  // Use saved credentials if available, otherwise use hardcoded
+  const char* ssid = savedSSID.length() > 0 ? savedSSID.c_str() : WIFI_SSID;
+  const char* pass = savedPass.length() > 0 ? savedPass.c_str() : WIFI_PASSWORD;
+  
+  WiFi.begin(ssid, pass);
   Serial.print("[WiFi] Connecting");
   int att=0;
   while (WiFi.status()!=WL_CONNECTED&&att<20) { 

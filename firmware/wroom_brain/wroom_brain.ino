@@ -410,12 +410,13 @@ void syncOfflineQueue() {
     DynamicJsonDocument submitDoc(2048);
     submitDoc["device_uid"] = DEVICE_UID;
     submitDoc["device_secret"] = DEVICE_SECRET;
-    submitDoc["rfid_uid"] = doc["rfid_uid"].as<String>();
+    submitDoc["credential_value"] = doc["rfid_uid"].as<String>();
     submitDoc["action"] = doc["action"].as<String>();
-    submitDoc["timestamp"] = timestampToISO(doc["timestamp"].as<unsigned long>());
+    submitDoc["event_time"] = timestampToISO(doc["timestamp"].as<unsigned long>());
     submitDoc["device_event_id"] = doc["device_event_id"].as<String>();
     if (doc.containsKey("photo_b64")) {
-      submitDoc["photo_b64"] = doc["photo_b64"].as<String>();
+      submitDoc["photo_base64"] = doc["photo_b64"].as<String>();
+      submitDoc["photo_mime"] = "image/jpeg";
     }
     
     String body;

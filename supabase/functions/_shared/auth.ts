@@ -1,14 +1,5 @@
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// SHA-256 hash function (matches device-provision)
-async function hashSecret(secret: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(secret);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 export function getSupabaseAdmin(): SupabaseClient {
   return createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -53,11 +44,10 @@ export async function authenticateDevice(
     return null;
   }
 
-  // Hash the provided secret and compare with stored hash
-  const hashedSecret = await hashSecret(deviceSecret);
-  const secretValid = hashedSecret === device.device_secret;
+  // Compare plaintext secret directly
+  const secretValid = deviceSecret === device.device_secret;
   if (!secretValid) {
-    console.warn(`[auth] secret mismatch: uid=${deviceUid} computed=${hashedSecret.substring(0,8)}... stored=${device.device_secret.substring(0,8)}...`);
+    console.warn(`[auth] secret mismatch: uid=${deviceUid}`);
     return null;
   }
 

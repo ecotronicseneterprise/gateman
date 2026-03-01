@@ -1,21 +1,12 @@
 import { getSupabaseAdmin, auditLog } from '../_shared/auth.ts';
 import { handleCors, jsonResponse, errorResponse } from '../_shared/cors.ts';
 
-// Simple hash function using Web Crypto API (bcrypt Worker not available in Edge Functions)
-async function hashSecret(secret: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(secret);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 /**
  * Edge Function: device-provision
  *
  * Called by ESP32 firmware during first boot.
  * Validates a single-use provisioning token, creates a device record
- * with a bcrypt-hashed secret, and returns the plaintext secret ONCE.
+ * with the plaintext secret, and returns the plaintext secret ONCE.
  *
  * Auth: None (token-based). Uses service role key internally.
  *
@@ -101,9 +92,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 4. Generate device secret — plaintext returned once, SHA-256 hash stored
+    // 4. Generate device secret — plaintext stored and returned
     const rawSecret = crypto.randomUUID() + '-' + crypto.randomUUID();
-    const hashedSecret = await hashSecret(rawSecret);
+    const hashedSecret = rawSecret;
 
     // 5. Create device record
     const { data: device, error: insertErr } = await supabase

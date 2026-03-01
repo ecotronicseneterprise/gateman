@@ -126,6 +126,13 @@ sudo systemctl restart nginx
 # SSH into server
 ssh deploy@46.225.186.103
 cd /var/www/gateman
+npx supabase functions deploy device-provision --project-ref ueobebsgheecclwcbigy --no-verify-jwt
+
+npx supabase functions deploy get-users --project-ref ueobebsgheecclwcbigy --no-verify-jwt
+
+
+
+
 
 Type RESET in Serial Monitor
 Re-provision with new token

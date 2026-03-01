@@ -24,6 +24,7 @@
 #include <Preferences.h>
 #include <time.h>
 #include <ArduinoJson.h>
+#include <sys/time.h>
 
 // Forward declaration for provision portal
 void provisionDevice(String token);
@@ -80,6 +81,16 @@ Preferences preferences;
 #define SYNC_MAX_PER_CYCLE 20    // Max records to sync per cycle (guard watchdog)
 #define HTTP_TIMEOUT_MS   8000   // Per-request timeout for submit-log
 #define OFFLINE_QUEUE_FILE "/queue.txt"  // SPIFFS file for offline logs
+
+const char* RESPONSE_HEADER_KEYS[] = {"Date"};
+const size_t RESPONSE_HEADER_COUNT = 1;
+
+uint64_t cachedEpoch = 0;
+uint32_t cachedMillis = 0;
+bool timeInitialized = false;
+const time_t FALLBACK_EPOCH = 1767225600;  // 2026-01-01 00:00:00 UTC
+const char* FALLBACK_LABEL = "2026-01-01 00:00:00";
+const time_t MIN_VALID_EPOCH = FALLBACK_EPOCH;
 
 HardwareSerial camSerial(2);
 MFRC522 rfid(RFID_SS, -1);
@@ -173,11 +184,14 @@ void provisionDevice(String token) {
   // For pilot: use hardcoded Supabase URL. Production: from QR payload.
   String provUrl = String(SUPABASE_URL.length() > 0 ? SUPABASE_URL : "https://ueobebsgheecclwcbigy.supabase.co");
   http.begin(provUrl + "/functions/v1/device-provision");
+  prepareSupabaseHttp(http);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", SUPABASE_ANON_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
   http.setTimeout(10000);
 
   int code = http.POST(body);
+  applyServerTimeFromHttp(http);
   if (code == 200) {
     String response = http.getString();
     DynamicJsonDocument resp(512);
@@ -231,6 +245,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("[BUILD] " __DATE__ " " __TIME__);
+  loadCachedTime();
 
   // Ensure GPIO0 is set to INPUT_PULLUP to help with boot mode
   pinMode(0, INPUT_PULLUP);
@@ -425,13 +440,16 @@ void syncOfflineQueue() {
     
     HTTPClient http;
     http.begin(SUPABASE_URL + "/functions/v1/submit-log");
+    prepareSupabaseHttp(http);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("apikey", SUPABASE_ANON_KEY);
+    http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
     http.setTimeout(HTTP_TIMEOUT_MS);
-    
+
     int code = http.POST(body);
+    applyServerTimeFromHttp(http);
     http.end();
-    
+
     if (code == 200 || code == 201) {
       synced++;
     } else {
@@ -659,11 +677,14 @@ void handleEnroll(String uid) {
     String body; serializeJson(doc, body);
     HTTPClient http;
     http.begin(SUPABASE_URL + "/functions/v1/device-enroll");
+    prepareSupabaseHttp(http);
     http.addHeader("Content-Type","application/json");
     http.addHeader("apikey", SUPABASE_ANON_KEY);
+    http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
     http.setTimeout(HTTP_TIMEOUT_MS);
     int code = http.POST(body);
     String resp = http.getString();
+    applyServerTimeFromHttp(http);
     http.end();
     Serial.println("[ENROLL] HTTP " + String(code) + " " + resp);
     if (code==200||code==201) {
@@ -694,11 +715,14 @@ void checkEnrollmentCommand() {
 
   HTTPClient http;
   http.begin(SUPABASE_URL + "/functions/v1/check-enrollment");
+  prepareSupabaseHttp(http);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", SUPABASE_ANON_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
   http.setTimeout(HTTP_TIMEOUT_MS);
 
   int code = http.POST(body);
+  applyServerTimeFromHttp(http);
   
   if (code == 200) {
     String resp = http.getString();
@@ -865,11 +889,14 @@ void syncPendingLogs() {
     // Per-record HTTP POST
     HTTPClient http;
     http.begin(SUPABASE_URL + "/functions/v1/submit-log");
+    prepareSupabaseHttp(http);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("apikey", SUPABASE_ANON_KEY);
+    http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
     http.setTimeout(HTTP_TIMEOUT_MS);
 
     int code = http.POST(body);
+    applyServerTimeFromHttp(http);
 
     if (code == 200) {
       // Parse response to check if inserted or duplicate
@@ -917,13 +944,16 @@ void downloadUsers() {
 
   HTTPClient http;
   http.begin(SUPABASE_URL + "/functions/v1/get-users");
+  prepareSupabaseHttp(http);
   http.addHeader("Content-Type", "application/json");
   Serial.println("[USERS] Adding apikey header");
   http.addHeader("apikey", SUPABASE_ANON_KEY);
+  http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
   http.setTimeout(8000);
   
   // esp_task_wdt_reset();  // Watchdog disabled
   int code = http.POST(authBody);
+  applyServerTimeFromHttp(http);
   // esp_task_wdt_reset();  // Watchdog disabled
   
   if (code==200) {
@@ -999,6 +1029,7 @@ void connectWiFi() {
   if (WiFi.status()==WL_CONNECTED) {
     Serial.println(" "+WiFi.localIP().toString());
     Serial.println("[WiFi] Auto-reconnect enabled, sleep disabled");
+    syncNTPTime();
   } else {
     Serial.println(" OFFLINE");
   }
@@ -1007,16 +1038,129 @@ void connectWiFi() {
 // ============================================================
 // TIME
 // ============================================================
-void syncNTPTime() {
-  configTime(GMT_OFFSET, DAYLIGHT, NTP_SERVER);
-  struct tm ti; int att=0;
-  while (!getLocalTime(&ti)&&att<10) { 
-    delay(500); 
-    att++; 
-    // esp_task_wdt_reset();  // Watchdog disabled
+void saveCurrentTimeSnapshot() {
+  struct timeval now;
+  gettimeofday(&now, nullptr);
+  if (now.tv_sec < MIN_VALID_EPOCH) return;
+  preferences.begin("ecotron", false);
+  preferences.putULong64("last_epoch", (uint64_t)now.tv_sec);
+  preferences.end();
+  cachedEpoch = now.tv_sec;
+  timeInitialized = true;
+}
+
+void loadCachedTime() {
+  preferences.begin("ecotron", true);
+  uint64_t storedEpoch = preferences.getULong64("last_epoch", 0);
+  preferences.end();
+  if (storedEpoch >= MIN_VALID_EPOCH) {
+    struct timeval tv;
+    tv.tv_sec = storedEpoch;
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+    cachedEpoch = storedEpoch;
+    timeInitialized = true;
+    struct tm tmInfo;
+    time_t epoch = (time_t)storedEpoch;
+    gmtime_r(&epoch, &tmInfo);
+    char buf[32];
+    strftime(buf, 32, "%Y-%m-%d %H:%M:%S", &tmInfo);
+    Serial.println(String("[TIME] Restored cached UTC: ") + buf);
+  } else {
+    timeInitialized = false;
   }
-  char buf[32]; strftime(buf,32,"%Y-%m-%d %H:%M:%S",&ti);
-  Serial.println("[NTP] "+String(buf));
+}
+
+bool isLeapYear(int year) {
+  return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+int monthFromString(const String& mon) {
+  const char* months[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+  for (int i = 0; i < 12; i++) {
+    if (mon.equalsIgnoreCase(months[i])) return i;
+  }
+  return -1;
+}
+
+time_t buildEpochUTC(int year, int month, int day, int hour, int minute, int second) {
+  if (year < 1970 || month < 0 || month > 11 || day < 1 || day > 31) return 0;
+  static const int monthDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+  long days = 0;
+  for (int y = 1970; y < year; y++) {
+    days += isLeapYear(y) ? 366 : 365;
+  }
+  for (int m = 0; m < month; m++) {
+    days += monthDays[m];
+    if (m == 1 && isLeapYear(year)) days += 1;
+  }
+  days += (day - 1);
+  return days * 86400L + hour * 3600L + minute * 60L + second;
+}
+
+time_t parseHttpDate(const String& header) {
+  if (header.length() < 29) return 0;  // e.g. "Sat, 01 Mar 2026 12:34:56 GMT"
+  int day = header.substring(5, 7).toInt();
+  int month = monthFromString(header.substring(8, 11));
+  int year = header.substring(12, 16).toInt();
+  int hour = header.substring(17, 19).toInt();
+  int minute = header.substring(20, 22).toInt();
+  int second = header.substring(23, 25).toInt();
+  if (month < 0 || year < 1970 || day <= 0) return 0;
+  return buildEpochUTC(year, month, day, hour, minute, second);
+}
+
+void updateCachedTime(time_t epoch) {
+  if (epoch < MIN_VALID_EPOCH) return;
+  struct timeval tv;
+  tv.tv_sec = epoch;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+  cachedEpoch = epoch;
+  timeInitialized = true;
+  saveCurrentTimeSnapshot();
+  struct tm tmInfo;
+  gmtime_r(&epoch, &tmInfo);
+  char buf[32];
+  strftime(buf, 32, "%Y-%m-%d %H:%M:%S", &tmInfo);
+  Serial.println(String("[TIME] Updated from server: ") + buf);
+}
+
+void prepareSupabaseHttp(HTTPClient &http) {
+  http.collectHeaders(RESPONSE_HEADER_KEYS, RESPONSE_HEADER_COUNT);
+}
+
+void applyServerTimeFromHttp(HTTPClient &http) {
+  String dateHeader = http.header("Date");
+  if (dateHeader.length() == 0) return;
+  time_t epoch = parseHttpDate(dateHeader);
+  if (epoch > 0) {
+    updateCachedTime(epoch);
+  }
+}
+
+void syncNTPTime() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  configTime(GMT_OFFSET, DAYLIGHT, NTP_SERVER);
+  delay(500); // Allow WiFi connection to stabilize before first attempt
+  struct tm ti;
+  bool success = false;
+  for (int att = 0; att < 20; att++) {
+    if (getLocalTime(&ti)) {
+      success = true;
+      break;
+    }
+    delay(1000);
+  }
+  if (success) {
+    char buf[32];
+    strftime(buf,32,"%Y-%m-%d %H:%M:%S",&ti);
+    Serial.println(String("[NTP] ")+buf);
+    time_t epoch = mktime(&ti);
+    updateCachedTime(epoch);
+  } else {
+    Serial.println("[NTP] Failed to sync after 20 attempts");
+  }
   // esp_task_wdt_reset();  // Watchdog disabled
 }
 

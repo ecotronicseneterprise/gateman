@@ -166,21 +166,14 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="info">
-      <strong>Step 1:</strong> Open dashboard and click "Claim Device"<br>
-      <strong>Step 2:</strong> Enter WiFi credentials below<br>
-      <strong>Step 3:</strong> Device will auto-provision when claimed
+      <strong>Step 1:</strong> Enter your WiFi credentials below<br>
+      <strong>Step 2:</strong> Copy the pairing code shown<br>
+      <strong>Step 3:</strong> Go to dashboard and paste code to add device
     </div>
 
     <div class="form-group">
       <label>Device MAC Address</label>
       <input type="text" id="mac" value="%MAC%" readonly>
-    </div>
-
-    <div class="info" style="background:#fef3c7;border-color:#fbbf24;color:#78350f;margin-bottom:20px">
-      <strong>📱 Claim this device from your dashboard:</strong><br>
-      <a href="http://dashboard.gateman.app/claim?mac=%MAC%" target="_blank" style="color:#78350f;font-weight:600;text-decoration:underline">
-        Click here to open dashboard
-      </a>
     </div>
 
     <form id="provisionForm" onsubmit="submitForm(event)">
@@ -194,10 +187,19 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
         <input type="password" id="password" name="password" placeholder="WiFi password" required>
       </div>
 
-      <button type="submit">Save WiFi & Wait for Claim</button>
+      <button type="submit">Generate Pairing Code</button>
     </form>
 
     <div id="status" class="info"></div>
+    
+    <div id="pairingCode" style="display:none;margin-top:20px;padding:20px;background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;text-align:center">
+      <div style="font-size:14px;color:#15803d;margin-bottom:10px;font-weight:600">✓ WiFi Saved! Your Pairing Code:</div>
+      <div style="font-size:32px;font-weight:700;color:#15803d;letter-spacing:4px;margin:15px 0;font-family:monospace" id="codeDisplay"></div>
+      <button onclick="copyCode()" style="background:#22c55e;color:white;border:none;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;margin-top:10px">📋 Copy Code</button>
+      <div style="margin-top:15px;font-size:13px;color:#15803d">
+        Go to your dashboard → Add Device → Paste this code
+      </div>
+    </div>
   </div>
 
   <script>
@@ -208,7 +210,7 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
       const mac = document.getElementById('mac').value;
       
       btn.disabled = true;
-      btn.textContent = 'Saving...';
+      btn.textContent = 'Generating...';
       status.style.display = 'block';
       status.className = 'info';
       status.textContent = 'Saving WiFi credentials...';
@@ -227,60 +229,39 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
           body: JSON.stringify(data)
         });
 
-        if (response.ok) {
-          status.className = 'info';
-          status.textContent = '✓ WiFi saved! Waiting for you to claim device from dashboard...';
-          btn.textContent = 'Waiting for Claim...';
-          
-          // Start polling for claim
-          pollForClaim(mac);
+        const result = await response.json();
+
+        if (response.ok && result.pairing_code) {
+          status.style.display = 'none';
+          document.getElementById('provisionForm').style.display = 'none';
+          document.getElementById('pairingCode').style.display = 'block';
+          document.getElementById('codeDisplay').textContent = result.pairing_code;
         } else {
           status.className = 'info error';
-          status.textContent = '✗ Failed to save WiFi credentials';
+          status.textContent = '✗ Failed to generate pairing code';
           btn.disabled = false;
-          btn.textContent = 'Save WiFi & Wait for Claim';
+          btn.textContent = 'Generate Pairing Code';
         }
       } catch (err) {
         status.className = 'info error';
         status.textContent = '✗ Error: ' + err.message;
         btn.disabled = false;
-        btn.textContent = 'Save WiFi & Wait for Claim';
+        btn.textContent = 'Generate Pairing Code';
       }
     }
 
-    async function pollForClaim(mac) {
-      const status = document.getElementById('status');
-      let attempts = 0;
-      const maxAttempts = 60; // 5 minutes (5s intervals)
-
-      const interval = setInterval(async () => {
-        attempts++;
-        
-        try {
-          const response = await fetch('/check-claim');
-          const result = await response.json();
-
-          if (result.claimed) {
-            clearInterval(interval);
-            status.className = 'info success';
-            status.textContent = '✓ Device claimed! Provisioning now...';
-            
-            setTimeout(() => {
-              status.textContent = '✓ Provisioning complete. Device rebooting...';
-            }, 2000);
-          } else if (attempts >= maxAttempts) {
-            clearInterval(interval);
-            status.className = 'info error';
-            status.textContent = '✗ Timeout waiting for claim. Please try again.';
-            document.querySelector('button').disabled = false;
-            document.querySelector('button').textContent = 'Save WiFi & Wait for Claim';
-          } else {
-            status.textContent = `⏳ Waiting for claim from dashboard... (${Math.floor((maxAttempts - attempts) * 5 / 60)}m ${((maxAttempts - attempts) * 5) % 60}s remaining)`;
-          }
-        } catch (err) {
-          console.error('Poll error:', err);
-        }
-      }, 5000); // Poll every 5 seconds
+    function copyCode() {
+      const code = document.getElementById('codeDisplay').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.style.background = '#15803d';
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = '#22c55e';
+        }, 2000);
+      });
     }
   </script>
 </body>
@@ -293,12 +274,10 @@ void handleRoot() {
   provisionServer.send(200, "text/html", html);
 }
 
-// Global variables for claim polling
+// Global variables for WiFi setup
 String savedSSID = "";
 String savedPassword = "";
 String deviceMAC = "";
-bool claimReceived = false;
-String claimToken = "";
 
 void handleSaveWiFi() {
   if (!provisionServer.hasArg("plain")) {
@@ -316,6 +295,7 @@ void handleSaveWiFi() {
 
   savedSSID = doc["ssid"].as<String>();
   savedPassword = doc["password"].as<String>();
+  deviceMAC = WiFi.macAddress();
 
   if (savedSSID.length() == 0) {
     provisionServer.send(400, "application/json", "{\"error\":\"Missing SSID\"}");
@@ -328,25 +308,16 @@ void handleSaveWiFi() {
   preferences.putString("wifi_pass", savedPassword);
   preferences.end();
 
-  provisionServer.send(200, "application/json", "{\"status\":\"success\"}");
-}
+  // Generate pairing code (MAC address without colons + last 4 chars as suffix)
+  String pairingCode = deviceMAC;
+  pairingCode.replace(":", "");
+  pairingCode.toUpperCase();
 
-void handleCheckClaim() {
-  // Return claim status
-  if (claimReceived) {
-    provisionServer.send(200, "application/json", "{\"claimed\":true}");
-    
-    // Trigger provisioning
-    preferences.begin("gateman", false);
-    preferences.putString("prov_token", claimToken);
-    preferences.putBool("needs_prov", true);
-    preferences.end();
-    
-    delay(2000);
-    ESP.restart();
-  } else {
-    provisionServer.send(200, "application/json", "{\"claimed\":false}");
-  }
+  Serial.println("[AP] WiFi saved. Pairing code: " + pairingCode);
+
+  // Return pairing code to user
+  String response = "{\"status\":\"success\",\"pairing_code\":\"" + pairingCode + "\"}";
+  provisionServer.send(200, "application/json", response);
 }
 
 void handleNotFound() {
@@ -379,65 +350,20 @@ void startProvisioningPortal() {
   // Web server routes
   provisionServer.on("/", handleRoot);
   provisionServer.on("/save-wifi", HTTP_POST, handleSaveWiFi);
-  provisionServer.on("/check-claim", handleCheckClaim);
   provisionServer.onNotFound(handleNotFound);
   
   provisionServer.begin();
   Serial.println("[AP] Web server started");
-  Serial.println("[AP] Waiting for WiFi credentials and claim...");
+  Serial.println("[AP] Waiting for user to enter WiFi credentials...");
 
   deviceMAC = WiFi.macAddress();
-  unsigned long lastPollMs = 0;
-  const unsigned long POLL_INTERVAL = 5000; // Poll cloud every 5 seconds
 
-  // Main loop - handle web requests and poll for claims
+  // Main loop - handle web requests and wait for pairing
   while (true) {
     dnsServer.processNextRequest();
     provisionServer.handleClient();
     
-    // Poll Supabase for claim if WiFi credentials are saved
-    if (savedSSID.length() > 0 && millis() - lastPollMs > POLL_INTERVAL) {
-      lastPollMs = millis();
-      
-      // Try to connect to WiFi temporarily to check for claim
-      WiFi.mode(WIFI_AP_STA);
-      WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
-      
-      int attempts = 0;
-      while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(250);
-        attempts++;
-      }
-      
-      if (WiFi.status() == WL_CONNECTED) {
-        // Check for claim from Supabase
-        HTTPClient http;
-        http.begin("https://ueobebsgheecclwcbigy.supabase.co/functions/v1/poll-claim");
-        http.addHeader("Content-Type", "application/json");
-        
-        String payload = "{\"device_mac\":\"" + deviceMAC + "\"}";
-        int code = http.POST(payload);
-        
-        if (code == 200) {
-          String response = http.getString();
-          DynamicJsonDocument doc(512);
-          if (deserializeJson(doc, response) == DeserializationError::Ok) {
-            if (doc["claimed"] == true) {
-              claimReceived = true;
-              claimToken = doc["provision_token"].as<String>();
-              Serial.println("[AP] Device claimed! Provisioning...");
-            }
-          }
-        }
-        http.end();
-        
-        // Disconnect WiFi, go back to AP-only mode
-        WiFi.disconnect();
-        WiFi.mode(WIFI_AP);
-      }
-    }
-    
-    // Slow blink = waiting for claim
+    // Slow blink = waiting for setup
     digitalWrite(STATUS_LED, HIGH);
     delay(500);
     digitalWrite(STATUS_LED, LOW);

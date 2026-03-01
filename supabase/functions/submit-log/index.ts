@@ -136,12 +136,11 @@ Deno.serve(async (req: Request) => {
           ignoreDuplicates: true,
         }
       )
-      .select('id')
-      .single();
+      .select('id');
 
-    // If ignoreDuplicates: true and it was a duplicate, inserted will be null
-    const wasDuplicate = !inserted && !insertErr;
-    const logId = inserted?.id;
+    // If ignoreDuplicates: true and it was a duplicate, data will be empty array
+    const wasDuplicate = !insertErr && (!inserted || inserted.length === 0);
+    const logId = inserted && inserted.length > 0 ? inserted[0].id : null;
 
     if (insertErr) {
       console.error('Attendance insert error:', insertErr);

@@ -483,10 +483,10 @@ void loop() {
     } else if (cmd.startsWith("PROVISION:")) {
       String secret = cmd.substring(10);
       Serial.println("[PROVISION] Manually setting device secret...");
-      preferences.begin("gateman", false);
+      preferences.begin("ecotron", false);
       preferences.putString("device_secret", secret);
       preferences.end();
-      Serial.println("[PROVISION] Secret saved. Rebooting...");
+      Serial.println("[PROVISION] Secret saved to NVS. Rebooting...");
       delay(1000);
       ESP.restart();
     } else if (cmd == "CLEAR_PENDING" || cmd == "CLEAR_CAM") {
@@ -494,6 +494,18 @@ void loop() {
       camSerial.println("CLEAR_ALL");
       delay(500);
       Serial.println("[CAM] Pending logs cleared.");
+    } else if (cmd == "STATUS") {
+      Serial.println("=== DEVICE STATUS ===");
+      Serial.println("UID:        " + DEVICE_UID);
+      Serial.println("DEVICE_ID:  " + DEVICE_ID);
+      Serial.println("URL:        " + SUPABASE_URL);
+      Serial.println("SECRET:     " + (DEVICE_SECRET.length() > 0 ? DEVICE_SECRET.substring(0, 8) + "..." : "(empty)"));
+      Serial.println("SECRET_LEN: " + String(DEVICE_SECRET.length()));
+      Serial.println("WiFi:       " + String(WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected"));
+      Serial.println("IP:         " + WiFi.localIP().toString());
+      Serial.println("HEAP:       " + String(ESP.getFreeHeap()) + " bytes");
+      Serial.println("Users:      " + String(userCount));
+      Serial.println("====================");
     }
   }
 
@@ -828,8 +840,8 @@ void syncPendingLogs() {
     DynamicJsonDocument rec(512);
     if (deserializeJson(rec,line)!=DeserializationError::Ok) continue;
 
-    // Build submit-log payload (512 bytes — no photo in this version)
-    DynamicJsonDocument payload(512);
+    // Build submit-log payload
+    DynamicJsonDocument payload(2048);
     payload["device_uid"]      = DEVICE_UID;
     payload["device_secret"]   = DEVICE_SECRET;
     String evtId = rec["device_event_id"].as<String>();
@@ -840,7 +852,10 @@ void syncPendingLogs() {
     payload["credential_value"]= rec["rfid_uid"];
     payload["event_time"]      = rec["timestamp"];
     payload["action"]          = rec["action"];
-    // photo_base64 omitted for Phase 1 (SD-only buffer)
+    if (rec.containsKey("photo_b64") && rec["photo_b64"].as<String>().length() > 0) {
+      payload["photo_base64"] = rec["photo_b64"];
+      payload["photo_mime"] = "image/jpeg";
+    }
 
     String body; serializeJson(payload, body);
 

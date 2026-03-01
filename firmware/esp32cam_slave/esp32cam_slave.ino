@@ -25,6 +25,7 @@
 #include <time.h>
 #include <esp_sleep.h>
 #include <esp_task_wdt.h>
+#include "mbedtls/base64.h"
 
 #define PWDN_GPIO_NUM  32
 #define RESET_GPIO_NUM -1
@@ -143,6 +144,7 @@ void loop() {
     else if(cmd.startsWith("DELETE_USER:")) handleDeleteUser(cmd);
     else if(cmd.startsWith("UPDATE_USER:")) handleUpdateUser(cmd);
     else if(cmd == "GET_HEALTH") handleGetHealth();
+    else if(cmd == "CLEAR_ALL") handleClearAll();
   }
 
   // Sleep disabled - keep CAM always responsive for UART commands
@@ -210,7 +212,36 @@ void handleGetPending() {
           if(f){
             while(f.available()){
               String line=f.readStringUntil('\n'); line.trim();
-              if(line.length()>0){wroomSerial.println(line);delay(20);}
+              if(line.length()>0){
+                // Inject photo base64 if image_path exists
+                int imgIdx = line.indexOf("\"image_path\":\"");
+                if (imgIdx > -1) {
+                  int pathStart = line.indexOf('"', imgIdx + 13) + 1;
+                  int pathEnd = line.indexOf('"', pathStart);
+                  if (pathStart > 0 && pathEnd > pathStart) {
+                    String photoPath = line.substring(pathStart, pathEnd);
+                    if (photoPath.length() > 0 && SD_MMC.exists(photoPath)) {
+                      File pf = SD_MMC.open(photoPath, FILE_READ);
+                      if (pf && pf.size() < 20000) {
+                        size_t pLen = pf.size();
+                        uint8_t* buf = (uint8_t*)malloc(pLen);
+                        if (buf) {
+                          pf.read(buf, pLen);
+                          String b64 = base64Encode(buf, pLen);
+                          free(buf);
+                          // Inject photo_b64 into JSON before closing brace
+                          int closeBrace = line.lastIndexOf('}');
+                          if (closeBrace > 0) {
+                            line = line.substring(0, closeBrace) + ",\"photo_b64\":\"" + b64 + "\"}";
+                          }
+                        }
+                      }
+                      if (pf) pf.close();
+                    }
+                  }
+                }
+                wroomSerial.println(line);delay(20);
+              }
             }
             f.close();
           }
@@ -222,6 +253,26 @@ void handleGetPending() {
     dir.close();
   }
   wroomSerial.println("END_LOGS");
+}
+
+void handleClearAll() {
+  File dir = SD_MMC.open("/pending");
+  if (dir && dir.isDirectory()) {
+    File entry = dir.openNextFile();
+    while (entry) {
+      if (!entry.isDirectory()) {
+        String name = String(entry.name());
+        entry.close();
+        SD_MMC.remove("/pending/" + name);
+      } else {
+        entry.close();
+      }
+      entry = dir.openNextFile();
+    }
+    dir.close();
+  }
+  wroomSerial.println("CLEARED");
+  Serial.println("[CAM] All pending logs cleared");
 }
 
 // ============================================================
@@ -582,6 +633,18 @@ void handleGetHealth(){
 // ============================================================
 // UTILITIES
 // ============================================================
+String base64Encode(const uint8_t* data, size_t len) {
+  size_t outLen = 0;
+  mbedtls_base64_encode(NULL, 0, &outLen, data, len);
+  uint8_t* outBuf = (uint8_t*)malloc(outLen + 1);
+  if (!outBuf) return "";
+  mbedtls_base64_encode(outBuf, outLen + 1, &outLen, data, len);
+  outBuf[outLen] = 0;
+  String result = String((char*)outBuf);
+  free(outBuf);
+  return result;
+}
+
 void ensureDirectories(){
   if(!SD_MMC.exists("/pending")) SD_MMC.mkdir("/pending");
   if(!SD_MMC.exists("/synced"))  SD_MMC.mkdir("/synced");

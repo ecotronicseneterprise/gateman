@@ -36,7 +36,10 @@ export async function authenticateDevice(
   deviceUid: string,
   deviceSecret: string
 ): Promise<DeviceRecord | null> {
-  if (!deviceUid || !deviceSecret) return null;
+  if (!deviceUid || !deviceSecret) {
+    console.warn(`[auth] missing credentials: uid=${!!deviceUid} secret=${!!deviceSecret}`);
+    return null;
+  }
 
   const { data: device, error } = await supabase
     .from('devices')
@@ -45,12 +48,18 @@ export async function authenticateDevice(
     .eq('status', 'active')
     .single();
 
-  if (error || !device) return null;
+  if (error || !device) {
+    console.warn(`[auth] device lookup failed: uid=${deviceUid} error=${error?.message || 'not found'}`);
+    return null;
+  }
 
   // Hash the provided secret and compare with stored hash
   const hashedSecret = await hashSecret(deviceSecret);
   const secretValid = hashedSecret === device.device_secret;
-  if (!secretValid) return null;
+  if (!secretValid) {
+    console.warn(`[auth] secret mismatch: uid=${deviceUid} computed=${hashedSecret.substring(0,8)}... stored=${device.device_secret.substring(0,8)}...`);
+    return null;
+  }
 
   // Update last_seen (fire-and-forget)
   supabase

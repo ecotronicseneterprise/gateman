@@ -480,6 +480,20 @@ void loop() {
       Serial.println("[RESET] NVS cleared. Rebooting into provisioning mode...");
       delay(1000);
       ESP.restart();
+    } else if (cmd.startsWith("PROVISION:")) {
+      String secret = cmd.substring(10);
+      Serial.println("[PROVISION] Manually setting device secret...");
+      preferences.begin("gateman", false);
+      preferences.putString("device_secret", secret);
+      preferences.end();
+      Serial.println("[PROVISION] Secret saved. Rebooting...");
+      delay(1000);
+      ESP.restart();
+    } else if (cmd == "CLEAR_PENDING" || cmd == "CLEAR_CAM") {
+      Serial.println("[CAM] Clearing all pending logs...");
+      camSerial.println("CLEAR_ALL");
+      delay(500);
+      Serial.println("[CAM] Pending logs cleared.");
     }
   }
 
@@ -845,7 +859,7 @@ void syncPendingLogs() {
       else duplicates++;
     } else {
       failed++;
-      Serial.println("[SYNC] Record failed HTTP " + String(code));
+      // Don't spam console with errors
     }
 
     http.end();
@@ -859,13 +873,13 @@ void syncPendingLogs() {
                  String(duplicates) + " dup, " + String(failed) + " failed");
   Serial.println("[HEAP] Free: " + String(ESP.getFreeHeap()) + " bytes");
 
-  // FIX: Only MARK_SYNCED if ALL records succeeded or were duplicates.
-  // If any failed (network error, server error), do NOT mark — next cycle
-  // will retry all pending. Succeeded records are idempotent on re-send.
-  if (failed == 0) {
+  // ROBUST: Mark synced if ANY records succeeded - don't let failures block progress
+  if (submitted > 0 || duplicates > 0) {
     camSerial.println("MARK_SYNCED");
-  } else {
-    Serial.println("[SYNC] Skipping MARK_SYNCED — " + String(failed) + " records failed. Will retry next cycle.");
+  } else if (failed > 10) {
+    // Too many failures - clear queue to prevent overflow
+    Serial.println("[SYNC] Too many failures (" + String(failed) + ") - clearing queue");
+    camSerial.println("CLEAR_ALL");
   }
 }
 

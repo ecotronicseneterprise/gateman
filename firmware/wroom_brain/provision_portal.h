@@ -312,14 +312,43 @@ void handleSaveWiFi() {
   preferences.putString("wifi_pass", savedPassword);
   preferences.end();
 
-  Serial.println("[AP] WiFi and token saved. Provisioning...");
+  Serial.println("[AP] WiFi and token saved. Connecting to WiFi...");
 
-  // Return success - device will provision on next boot
-  provisionServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Provisioning...\"}");
+  // Return success to user
+  provisionServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Connecting to WiFi...\"}");
   
-  // Provision device immediately
   delay(1000);
-  provisionDevice(token);
+  
+  // Stop AP and DNS server
+  dnsServer.stop();
+  provisionServer.stop();
+  WiFi.softAPdisconnect(true);
+  
+  // Connect to WiFi
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
+  
+  Serial.print("[WiFi] Connecting to " + savedSSID + "...");
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println(" Connected!");
+    Serial.println("[WiFi] IP: " + WiFi.localIP().toString());
+    
+    // Now provision device
+    delay(1000);
+    provisionDevice(token);
+  } else {
+    Serial.println(" FAILED!");
+    Serial.println("[ERROR] Could not connect to WiFi. Rebooting...");
+    delay(2000);
+    ESP.restart();
+  }
 }
 
 void handleNotFound() {

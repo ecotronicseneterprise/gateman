@@ -278,10 +278,16 @@ void setup() {
   }
   // esp_task_wdt_reset();  // Watchdog disabled
 
-  // Derive hardware UID immediately (need WiFi mode set first)
-  WiFi.mode(WIFI_STA);
-  DEVICE_UID = WiFi.macAddress();
+  // Derive hardware UID immediately - get MAC before any WiFi mode changes
+  uint8_t mac[6];
+  esp_efuse_mac_get_default(mac);
+  char macStr[18];
+  sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  DEVICE_UID = String(macStr);
   Serial.println("[HW] MAC=" + DEVICE_UID);
+  
+  // Now set WiFi mode
+  WiFi.mode(WIFI_STA);
   // esp_task_wdt_reset();  // Watchdog disabled
 
   // UART to CAM

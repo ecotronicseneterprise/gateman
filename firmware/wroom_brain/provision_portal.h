@@ -268,9 +268,12 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
+// External reference to DEVICE_UID from main sketch
+extern String DEVICE_UID;
+
 void handleRoot() {
   String html = PROVISION_HTML;
-  html.replace("%MAC%", WiFi.macAddress());
+  html.replace("%MAC%", DEVICE_UID);
   provisionServer.send(200, "text/html", html);
 }
 
@@ -295,7 +298,6 @@ void handleSaveWiFi() {
 
   savedSSID = doc["ssid"].as<String>();
   savedPassword = doc["password"].as<String>();
-  deviceMAC = WiFi.macAddress();
 
   if (savedSSID.length() == 0) {
     provisionServer.send(400, "application/json", "{\"error\":\"Missing SSID\"}");
@@ -308,8 +310,8 @@ void handleSaveWiFi() {
   preferences.putString("wifi_pass", savedPassword);
   preferences.end();
 
-  // Generate pairing code (MAC address without colons + last 4 chars as suffix)
-  String pairingCode = deviceMAC;
+  // Generate pairing code (MAC address without colons)
+  String pairingCode = DEVICE_UID;
   pairingCode.replace(":", "");
   pairingCode.toUpperCase();
 
@@ -327,7 +329,8 @@ void handleNotFound() {
 }
 
 void startProvisioningPortal() {
-  String apSSID = "GATEMAN-SETUP-" + WiFi.macAddress().substring(12);
+  // Use last 4 chars of MAC for SSID (already have DEVICE_UID from setup)
+  String apSSID = "GATEMAN-SETUP-" + DEVICE_UID.substring(12);
   apSSID.replace(":", "");
   
   Serial.println("[AP] Starting provisioning portal...");
@@ -355,8 +358,6 @@ void startProvisioningPortal() {
   provisionServer.begin();
   Serial.println("[AP] Web server started");
   Serial.println("[AP] Waiting for user to enter WiFi credentials...");
-
-  deviceMAC = WiFi.macAddress();
 
   // Main loop - handle web requests and wait for pairing
   while (true) {

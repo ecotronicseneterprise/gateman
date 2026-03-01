@@ -162,11 +162,10 @@ String generateEventId(String rfidUid, unsigned long ts) {
 // PROVISIONING
 // ============================================================
 void provisionDevice(String token) {
-  String deviceUid = WiFi.macAddress();
-  Serial.println("[PROVISION] Attempting with UID=" + deviceUid);
+  Serial.println("[PROVISION] Attempting with UID=" + DEVICE_UID);
 
   DynamicJsonDocument doc(256);
-  doc["device_uid"] = deviceUid;
+  doc["device_uid"] = DEVICE_UID;
   doc["provisioning_token"] = token;
   String body; serializeJson(doc, body);
 
@@ -187,7 +186,7 @@ void provisionDevice(String token) {
       String devId  = resp["device_id"].as<String>();
       String url    = resp["supabase_url"].as<String>();
 
-      saveCredentials(deviceUid, secret, devId, url);
+      saveCredentials(DEVICE_UID, secret, devId, url);
       Serial.println("[PROVISION] SUCCESS! Rebooting...");
       http.end();
       delay(1000);

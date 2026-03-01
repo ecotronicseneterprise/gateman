@@ -425,6 +425,7 @@ void syncOfflineQueue() {
     HTTPClient http;
     http.begin(SUPABASE_URL + "/functions/v1/submit-log");
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("apikey", SUPABASE_ANON_KEY);
     http.setTimeout(HTTP_TIMEOUT_MS);
     
     int code = http.POST(body);
@@ -693,6 +694,7 @@ void checkEnrollmentCommand() {
   HTTPClient http;
   http.begin(SUPABASE_URL + "/functions/v1/check-enrollment");
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", SUPABASE_ANON_KEY);
   http.setTimeout(HTTP_TIMEOUT_MS);
 
   int code = http.POST(body);
@@ -863,6 +865,7 @@ void syncPendingLogs() {
     HTTPClient http;
     http.begin(SUPABASE_URL + "/functions/v1/submit-log");
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("apikey", SUPABASE_ANON_KEY);
     http.setTimeout(HTTP_TIMEOUT_MS);
 
     int code = http.POST(body);
@@ -914,6 +917,7 @@ void downloadUsers() {
   HTTPClient http;
   http.begin(SUPABASE_URL + "/functions/v1/get-users");
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", SUPABASE_ANON_KEY);
   http.setTimeout(8000);
   
   // esp_task_wdt_reset();  // Watchdog disabled

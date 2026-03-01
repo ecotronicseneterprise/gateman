@@ -166,9 +166,9 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="info">
-      <strong>Step 1:</strong> Enter your WiFi credentials below<br>
-      <strong>Step 2:</strong> Copy the pairing code shown<br>
-      <strong>Step 3:</strong> Go to dashboard and paste code to add device
+      <strong>Step 1:</strong> Go to dashboard → Devices → Add Device → Generate Token<br>
+      <strong>Step 2:</strong> Copy the token and paste below<br>
+      <strong>Step 3:</strong> Enter WiFi credentials and submit
     </div>
 
     <div class="form-group">
@@ -177,6 +177,11 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <form id="provisionForm" onsubmit="submitForm(event)">
+      <div class="form-group">
+        <label>Provisioning Token *</label>
+        <input type="text" id="token" name="token" placeholder="Paste token from dashboard" required style="font-family:monospace">
+      </div>
+
       <div class="form-group">
         <label>WiFi SSID *</label>
         <input type="text" id="ssid" name="ssid" placeholder="Your WiFi network name" required>
@@ -187,19 +192,10 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
         <input type="password" id="password" name="password" placeholder="WiFi password" required>
       </div>
 
-      <button type="submit">Generate Pairing Code</button>
+      <button type="submit">Provision Device</button>
     </form>
 
     <div id="status" class="info"></div>
-    
-    <div id="pairingCode" style="display:none;margin-top:20px;padding:20px;background:#f0fdf4;border:2px solid #22c55e;border-radius:8px;text-align:center">
-      <div style="font-size:14px;color:#15803d;margin-bottom:10px;font-weight:600">✓ WiFi Saved! Your Pairing Code:</div>
-      <div style="font-size:32px;font-weight:700;color:#15803d;letter-spacing:4px;margin:15px 0;font-family:monospace" id="codeDisplay"></div>
-      <button onclick="copyCode()" style="background:#22c55e;color:white;border:none;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;margin-top:10px">📋 Copy Code</button>
-      <div style="margin-top:15px;font-size:13px;color:#15803d">
-        Go to your dashboard → Add Device → Paste this code
-      </div>
-    </div>
   </div>
 
   <script>
@@ -207,17 +203,16 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
       e.preventDefault();
       const btn = e.target.querySelector('button');
       const status = document.getElementById('status');
-      const mac = document.getElementById('mac').value;
       
       btn.disabled = true;
-      btn.textContent = 'Generating...';
+      btn.textContent = 'Provisioning...';
       status.style.display = 'block';
       status.className = 'info';
-      status.textContent = 'Saving WiFi credentials...';
+      status.textContent = 'Connecting to WiFi and provisioning device...';
 
       const formData = new FormData(e.target);
       const data = {
-        mac: mac,
+        token: formData.get('token'),
         ssid: formData.get('ssid'),
         password: formData.get('password')
       };
@@ -231,16 +226,17 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
 
         const result = await response.json();
 
-        if (response.ok && result.pairing_code) {
-          status.style.display = 'none';
-          document.getElementById('provisionForm').style.display = 'none';
-          document.getElementById('pairingCode').style.display = 'block';
-          document.getElementById('codeDisplay').textContent = result.pairing_code;
+        if (response.ok) {
+          status.className = 'info';
+          status.textContent = '✓ Success! Device is provisioning and will reboot...';
+          setTimeout(() => {
+            status.textContent = 'You can close this page. Device will connect to WiFi shortly.';
+          }, 3000);
         } else {
           status.className = 'info error';
-          status.textContent = '✗ Failed to generate pairing code';
+          status.textContent = '✗ ' + (result.error || 'Provisioning failed');
           btn.disabled = false;
-          btn.textContent = 'Generate Pairing Code';
+          btn.textContent = 'Provision Device';
         }
       } catch (err) {
         status.className = 'info error';
@@ -298,9 +294,15 @@ void handleSaveWiFi() {
 
   savedSSID = doc["ssid"].as<String>();
   savedPassword = doc["password"].as<String>();
+  String token = doc["token"].as<String>();
 
   if (savedSSID.length() == 0) {
     provisionServer.send(400, "application/json", "{\"error\":\"Missing SSID\"}");
+    return;
+  }
+
+  if (token.length() == 0) {
+    provisionServer.send(400, "application/json", "{\"error\":\"Missing provisioning token\"}");
     return;
   }
 
@@ -310,16 +312,14 @@ void handleSaveWiFi() {
   preferences.putString("wifi_pass", savedPassword);
   preferences.end();
 
-  // Generate pairing code (MAC address without colons)
-  String pairingCode = DEVICE_UID;
-  pairingCode.replace(":", "");
-  pairingCode.toUpperCase();
+  Serial.println("[AP] WiFi and token saved. Provisioning...");
 
-  Serial.println("[AP] WiFi saved. Pairing code: " + pairingCode);
-
-  // Return pairing code to user
-  String response = "{\"status\":\"success\",\"pairing_code\":\"" + pairingCode + "\"}";
-  provisionServer.send(200, "application/json", response);
+  // Return success - device will provision on next boot
+  provisionServer.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Provisioning...\"}");
+  
+  // Provision device immediately
+  delay(1000);
+  provisionDevice(token);
 }
 
 void handleNotFound() {

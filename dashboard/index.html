@@ -661,24 +661,18 @@ html, body { overflow-x: hidden; }
   </div>
 </div>
 
-<!-- PAIR DEVICE MODAL -->
+<!-- PROVISION DEVICE MODAL -->
 <div class="modal-overlay" id="provisionModal">
   <div class="modal">
     <h3>Add New Device</h3>
-    <p style="color:var(--muted);font-size:13px;margin-bottom:20px">
-      Connect to your device's WiFi hotspot (GATEMAN-SETUP-XXXX), enter WiFi credentials, then paste the pairing code shown here.
-    </p>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Generate a provisioning token. Paste this token into your device's setup portal along with WiFi credentials.</p>
     <div class="form-group">
       <label>Device Name</label>
       <input id="provDeviceName" class="search-input" style="width:100%" placeholder="e.g. Main Entrance">
     </div>
-    <div class="form-group">
-      <label>Pairing Code (12 characters)</label>
-      <input id="pairingCodeInput" class="search-input" style="width:100%;font-family:monospace;text-transform:uppercase" placeholder="30C6F7982B14" maxlength="12">
-    </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('provisionModal')">Cancel</button>
-      <button class="btn btn-accent" id="btnPairDevice" onclick="pairDevice()">Pair Device</button>
+      <button class="btn btn-accent" id="btnGenerateToken" onclick="generateProvisionToken()">Generate Token</button>
     </div>
   </div>
 </div>
@@ -1349,27 +1343,21 @@ async function loadDevices() {
 
 function openProvisionModal() {
   document.getElementById('provDeviceName').value = '';
-  document.getElementById('pairingCodeInput').value = '';
+  document.getElementById('provisionResult').style.display = 'none';
   document.getElementById('provisionModal').classList.add('open');
 }
 
-async function pairDevice() {
+async function generateProvisionToken() {
   const deviceName = document.getElementById('provDeviceName').value.trim();
-  const pairingCode = document.getElementById('pairingCodeInput').value.trim().toUpperCase();
-  const btn = document.getElementById('btnPairDevice');
+  const btn = document.getElementById('btnGenerateToken');
   
   if (!deviceName) {
     showToast('Please enter a device name', 'error');
     return;
   }
   
-  if (!pairingCode || pairingCode.length !== 12) {
-    showToast('Please enter a valid 12-character pairing code', 'error');
-    return;
-  }
-  
   btn.disabled = true;
-  btn.textContent = 'Pairing...';
+  btn.textContent = 'Generating...';
   
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -1379,7 +1367,7 @@ async function pairDevice() {
       return;
     }
     
-    const resp = await fetch(`${SUPABASE_URL}/functions/v1/pair-device`, {
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-provision-token`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${session.access_token}`,
@@ -1387,26 +1375,44 @@ async function pairDevice() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        pairing_code: pairingCode,
-        device_name: deviceName
+        device_name: deviceName,
+        organization_id: currentOrgId,
+        user_id: session.user.id
       })
     });
     
     const result = await resp.json();
     
     if (!resp.ok) {
-      showToast(result?.error || 'Failed to pair device', 'error');
+      showToast(result?.error || 'Failed to generate token', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Generate Token';
       return;
     }
     
-    showToast('Device paired successfully! It will provision automatically.', 'success');
+    currentProvisionToken = result.token;
     closeModal('provisionModal');
-    loadDevices();
+    document.getElementById('provisionTokenDisplay').textContent = result.token;
+    document.getElementById('provisionResult').style.display = 'block';
+    
+    // Generate QR code
+    const qrContainer = document.getElementById('provisionQR');
+    qrContainer.innerHTML = '';
+    new QRCode(qrContainer, {
+      text: result.token,
+      width: 200,
+      height: 200,
+      colorDark: '#1a1d27',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    
+    showToast('Token generated! Expires in 10 minutes.', 'success');
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Pair Device';
+    btn.textContent = 'Generate Token';
   }
 }
 

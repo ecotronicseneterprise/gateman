@@ -9,6 +9,11 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
+#include <Preferences.h>
+
+// External references to main sketch variables
+extern Preferences preferences;
+extern const int STATUS_LED;
 
 WebServer provisionServer(80);
 DNSServer dnsServer;

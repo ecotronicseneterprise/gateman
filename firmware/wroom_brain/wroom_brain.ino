@@ -230,6 +230,24 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  // Ensure GPIO0 is set to INPUT_PULLUP to help with boot mode
+  pinMode(0, INPUT_PULLUP);
+  
+  // Print boot reason for debugging
+  esp_reset_reason_t reason = esp_reset_reason();
+  Serial.printf("\n[BOOT] Reset reason: %d ", reason);
+  switch(reason) {
+    case ESP_RST_POWERON:   Serial.println("(Power-on)"); break;
+    case ESP_RST_SW:        Serial.println("(Software reset)"); break;
+    case ESP_RST_PANIC:     Serial.println("(Exception/panic)"); break;
+    case ESP_RST_INT_WDT:   Serial.println("(Interrupt watchdog)"); break;
+    case ESP_RST_TASK_WDT:  Serial.println("(Task watchdog)"); break;
+    case ESP_RST_WDT:       Serial.println("(Other watchdog)"); break;
+    case ESP_RST_DEEPSLEEP: Serial.println("(Deep sleep)"); break;
+    case ESP_RST_BROWNOUT:  Serial.println("(Brownout)"); break;
+    default:                Serial.println("(Unknown)"); break;
+  }
+
   // Watchdog — DISABLED (was causing constant resets)
   // esp_task_wdt_config_t wdt_config = {
   //   .timeout_ms = WDT_TIMEOUT_S * 1000,
@@ -239,7 +257,7 @@ void setup() {
   // esp_task_wdt_init(&wdt_config);
   // esp_task_wdt_add(NULL);
 
-  Serial.println("\n============================");
+  Serial.println("============================");
   Serial.println("  EcoTronic WROOM v3 (SaaS)");
   Serial.println("============================");
 

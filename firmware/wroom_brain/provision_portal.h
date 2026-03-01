@@ -13,7 +13,11 @@
 
 // External references to main sketch variables
 extern Preferences preferences;
-extern const int STATUS_LED;
+
+// STATUS_LED will be defined in main sketch, but we need it available here
+#ifndef STATUS_LED
+#define STATUS_LED 2
+#endif
 
 WebServer provisionServer(80);
 DNSServer dnsServer;

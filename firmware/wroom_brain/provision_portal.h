@@ -166,22 +166,24 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
     </div>
 
     <div class="info">
-      <strong>Step 1:</strong> Get provisioning token from dashboard<br>
-      <strong>Step 2:</strong> Enter WiFi credentials<br>
-      <strong>Step 3:</strong> Submit to complete setup
+      <strong>Step 1:</strong> Open dashboard and click "Claim Device"<br>
+      <strong>Step 2:</strong> Enter WiFi credentials below<br>
+      <strong>Step 3:</strong> Device will auto-provision when claimed
+    </div>
+
+    <div class="form-group">
+      <label>Device MAC Address</label>
+      <input type="text" id="mac" value="%MAC%" readonly>
+    </div>
+
+    <div class="info" style="background:#fef3c7;border-color:#fbbf24;color:#78350f;margin-bottom:20px">
+      <strong>📱 Claim this device from your dashboard:</strong><br>
+      <a href="http://dashboard.gateman.app/claim?mac=%MAC%" target="_blank" style="color:#78350f;font-weight:600;text-decoration:underline">
+        Click here to open dashboard
+      </a>
     </div>
 
     <form id="provisionForm" onsubmit="submitForm(event)">
-      <div class="form-group">
-        <label>Device MAC Address</label>
-        <input type="text" id="mac" name="mac" value="%MAC%" readonly>
-      </div>
-
-      <div class="form-group">
-        <label>Provisioning Token *</label>
-        <textarea id="token" name="token" placeholder="Paste token from dashboard..." required></textarea>
-      </div>
-
       <div class="form-group">
         <label>WiFi SSID *</label>
         <input type="text" id="ssid" name="ssid" placeholder="Your WiFi network name" required>
@@ -192,7 +194,7 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
         <input type="password" id="password" name="password" placeholder="WiFi password" required>
       </div>
 
-      <button type="submit">Provision Device</button>
+      <button type="submit">Save WiFi & Wait for Claim</button>
     </form>
 
     <div id="status" class="info"></div>
@@ -203,43 +205,82 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
       e.preventDefault();
       const btn = e.target.querySelector('button');
       const status = document.getElementById('status');
+      const mac = document.getElementById('mac').value;
       
       btn.disabled = true;
-      btn.textContent = 'Provisioning...';
+      btn.textContent = 'Saving...';
       status.style.display = 'block';
       status.className = 'info';
-      status.textContent = 'Connecting to server...';
+      status.textContent = 'Saving WiFi credentials...';
 
       const formData = new FormData(e.target);
-      const data = Object.fromEntries(formData);
+      const data = {
+        mac: mac,
+        ssid: formData.get('ssid'),
+        password: formData.get('password')
+      };
 
       try {
-        const response = await fetch('/provision', {
+        const response = await fetch('/save-wifi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
 
-        const result = await response.json();
-
         if (response.ok) {
-          status.className = 'info success';
-          status.textContent = '✓ Success! Device is provisioned. Rebooting...';
-          setTimeout(() => {
-            status.textContent = '✓ Device rebooted. You can close this page.';
-          }, 3000);
+          status.className = 'info';
+          status.textContent = '✓ WiFi saved! Waiting for you to claim device from dashboard...';
+          btn.textContent = 'Waiting for Claim...';
+          
+          // Start polling for claim
+          pollForClaim(mac);
         } else {
           status.className = 'info error';
-          status.textContent = '✗ Error: ' + (result.error || 'Provisioning failed');
+          status.textContent = '✗ Failed to save WiFi credentials';
           btn.disabled = false;
-          btn.textContent = 'Provision Device';
+          btn.textContent = 'Save WiFi & Wait for Claim';
         }
       } catch (err) {
         status.className = 'info error';
-        status.textContent = '✗ Network error: ' + err.message;
+        status.textContent = '✗ Error: ' + err.message;
         btn.disabled = false;
-        btn.textContent = 'Provision Device';
+        btn.textContent = 'Save WiFi & Wait for Claim';
       }
+    }
+
+    async function pollForClaim(mac) {
+      const status = document.getElementById('status');
+      let attempts = 0;
+      const maxAttempts = 60; // 5 minutes (5s intervals)
+
+      const interval = setInterval(async () => {
+        attempts++;
+        
+        try {
+          const response = await fetch('/check-claim');
+          const result = await response.json();
+
+          if (result.claimed) {
+            clearInterval(interval);
+            status.className = 'info success';
+            status.textContent = '✓ Device claimed! Provisioning now...';
+            
+            setTimeout(() => {
+              status.textContent = '✓ Provisioning complete. Device rebooting...';
+            }, 2000);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(interval);
+            status.className = 'info error';
+            status.textContent = '✗ Timeout waiting for claim. Please try again.';
+            document.querySelector('button').disabled = false;
+            document.querySelector('button').textContent = 'Save WiFi & Wait for Claim';
+          } else {
+            status.textContent = `⏳ Waiting for claim from dashboard... (${Math.floor((maxAttempts - attempts) * 5 / 60)}m ${((maxAttempts - attempts) * 5) % 60}s remaining)`;
+          }
+        } catch (err) {
+          console.error('Poll error:', err);
+        }
+      }, 5000); // Poll every 5 seconds
     }
   </script>
 </body>
@@ -252,42 +293,60 @@ void handleRoot() {
   provisionServer.send(200, "text/html", html);
 }
 
-void handleProvision() {
+// Global variables for claim polling
+String savedSSID = "";
+String savedPassword = "";
+String deviceMAC = "";
+bool claimReceived = false;
+String claimToken = "";
+
+void handleSaveWiFi() {
   if (!provisionServer.hasArg("plain")) {
     provisionServer.send(400, "application/json", "{\"error\":\"No data\"}");
     return;
   }
 
   String body = provisionServer.arg("plain");
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(512);
   
   if (deserializeJson(doc, body) != DeserializationError::Ok) {
     provisionServer.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
     return;
   }
 
-  String token = doc["token"].as<String>();
-  String ssid = doc["ssid"].as<String>();
-  String password = doc["password"].as<String>();
+  savedSSID = doc["ssid"].as<String>();
+  savedPassword = doc["password"].as<String>();
 
-  if (token.length() == 0 || ssid.length() == 0) {
-    provisionServer.send(400, "application/json", "{\"error\":\"Missing required fields\"}");
+  if (savedSSID.length() == 0) {
+    provisionServer.send(400, "application/json", "{\"error\":\"Missing SSID\"}");
     return;
   }
 
-  // Save WiFi credentials temporarily
+  // Save WiFi credentials to NVS
   preferences.begin("gateman", false);
-  preferences.putString("wifi_ssid", ssid);
-  preferences.putString("wifi_pass", password);
-  preferences.putString("prov_token", token);
-  preferences.putBool("needs_prov", true);
+  preferences.putString("wifi_ssid", savedSSID);
+  preferences.putString("wifi_pass", savedPassword);
   preferences.end();
 
   provisionServer.send(200, "application/json", "{\"status\":\"success\"}");
+}
 
-  // Reboot after 2 seconds
-  delay(2000);
-  ESP.restart();
+void handleCheckClaim() {
+  // Return claim status
+  if (claimReceived) {
+    provisionServer.send(200, "application/json", "{\"claimed\":true}");
+    
+    // Trigger provisioning
+    preferences.begin("gateman", false);
+    preferences.putString("prov_token", claimToken);
+    preferences.putBool("needs_prov", true);
+    preferences.end();
+    
+    delay(2000);
+    ESP.restart();
+  } else {
+    provisionServer.send(200, "application/json", "{\"claimed\":false}");
+  }
 }
 
 void handleNotFound() {
@@ -319,18 +378,66 @@ void startProvisioningPortal() {
 
   // Web server routes
   provisionServer.on("/", handleRoot);
-  provisionServer.on("/provision", HTTP_POST, handleProvision);
+  provisionServer.on("/save-wifi", HTTP_POST, handleSaveWiFi);
+  provisionServer.on("/check-claim", handleCheckClaim);
   provisionServer.onNotFound(handleNotFound);
   
   provisionServer.begin();
   Serial.println("[AP] Web server started");
+  Serial.println("[AP] Waiting for WiFi credentials and claim...");
 
-  // Blink LED to indicate AP mode
+  deviceMAC = WiFi.macAddress();
+  unsigned long lastPollMs = 0;
+  const unsigned long POLL_INTERVAL = 5000; // Poll cloud every 5 seconds
+
+  // Main loop - handle web requests and poll for claims
   while (true) {
     dnsServer.processNextRequest();
     provisionServer.handleClient();
     
-    // Slow blink = waiting for provisioning
+    // Poll Supabase for claim if WiFi credentials are saved
+    if (savedSSID.length() > 0 && millis() - lastPollMs > POLL_INTERVAL) {
+      lastPollMs = millis();
+      
+      // Try to connect to WiFi temporarily to check for claim
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
+      
+      int attempts = 0;
+      while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(250);
+        attempts++;
+      }
+      
+      if (WiFi.status() == WL_CONNECTED) {
+        // Check for claim from Supabase
+        HTTPClient http;
+        http.begin("https://ueobebsgheecclwcbigy.supabase.co/functions/v1/poll-claim");
+        http.addHeader("Content-Type", "application/json");
+        
+        String payload = "{\"device_mac\":\"" + deviceMAC + "\"}";
+        int code = http.POST(payload);
+        
+        if (code == 200) {
+          String response = http.getString();
+          DynamicJsonDocument doc(512);
+          if (deserializeJson(doc, response) == DeserializationError::Ok) {
+            if (doc["claimed"] == true) {
+              claimReceived = true;
+              claimToken = doc["provision_token"].as<String>();
+              Serial.println("[AP] Device claimed! Provisioning...");
+            }
+          }
+        }
+        http.end();
+        
+        // Disconnect WiFi, go back to AP-only mode
+        WiFi.disconnect();
+        WiFi.mode(WIFI_AP);
+      }
+    }
+    
+    // Slow blink = waiting for claim
     digitalWrite(STATUS_LED, HIGH);
     delay(500);
     digitalWrite(STATUS_LED, LOW);

@@ -24,7 +24,6 @@
 #include <Preferences.h>
 #include <time.h>
 #include <ArduinoJson.h>
-#include <esp_efuse.h>
 #include "provision_portal.h"
 
 // ============================================================
@@ -277,16 +276,13 @@ void setup() {
   }
   // esp_task_wdt_reset();  // Watchdog disabled
 
-  // Derive hardware UID immediately - get MAC before any WiFi mode changes
-  uint8_t mac[6];
-  esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  char macStr[18];
-  sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  DEVICE_UID = String(macStr);
-  Serial.println("[HW] MAC=" + DEVICE_UID);
-  
-  // Now set WiFi mode
+  // Initialize WiFi in STA mode first to get MAC address
   WiFi.mode(WIFI_STA);
+  delay(100);  // Give WiFi hardware time to initialize
+  
+  // Now get MAC address
+  DEVICE_UID = WiFi.macAddress();
+  Serial.println("[HW] MAC=" + DEVICE_UID);
   // esp_task_wdt_reset();  // Watchdog disabled
 
   // UART to CAM

@@ -661,18 +661,24 @@ html, body { overflow-x: hidden; }
   </div>
 </div>
 
-<!-- PROVISION DEVICE MODAL -->
+<!-- PAIR DEVICE MODAL -->
 <div class="modal-overlay" id="provisionModal">
   <div class="modal">
     <h3>Add New Device</h3>
-    <p style="color:var(--muted);font-size:13px;margin-bottom:20px">Generate a provisioning token. The device will use this token on first boot to register itself.</p>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:20px">
+      Connect to your device's WiFi hotspot (GATEMAN-SETUP-XXXX), enter WiFi credentials, then paste the pairing code shown here.
+    </p>
     <div class="form-group">
       <label>Device Name</label>
       <input id="provDeviceName" class="search-input" style="width:100%" placeholder="e.g. Main Entrance">
     </div>
+    <div class="form-group">
+      <label>Pairing Code (12 characters)</label>
+      <input id="pairingCodeInput" class="search-input" style="width:100%;font-family:monospace;text-transform:uppercase" placeholder="30C6F7982B14" maxlength="12">
+    </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeModal('provisionModal')">Cancel</button>
-      <button class="btn btn-accent" id="btnGenerateToken" onclick="generateProvisionToken()">Generate Token</button>
+      <button class="btn btn-accent" id="btnPairDevice" onclick="pairDevice()">Pair Device</button>
     </div>
   </div>
 </div>
@@ -1343,50 +1349,64 @@ async function loadDevices() {
 
 function openProvisionModal() {
   document.getElementById('provDeviceName').value = '';
-  document.getElementById('provisionResult').style.display = 'none';
+  document.getElementById('pairingCodeInput').value = '';
   document.getElementById('provisionModal').classList.add('open');
 }
 
-async function generateProvisionToken() {
+async function pairDevice() {
   const deviceName = document.getElementById('provDeviceName').value.trim();
-  const btn = document.getElementById('btnGenerateToken');
-  btn.disabled = true; btn.textContent = 'Generating...';
+  const pairingCode = document.getElementById('pairingCodeInput').value.trim().toUpperCase();
+  const btn = document.getElementById('btnPairDevice');
+  
+  if (!deviceName) {
+    showToast('Please enter a device name', 'error');
+    return;
+  }
+  
+  if (!pairingCode || pairingCode.length !== 12) {
+    showToast('Please enter a valid 12-character pairing code', 'error');
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Pairing...';
+  
   try {
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) { showToast('Session expired. Please sign in again.', 'error'); logout(); return; }
-    const resp = await fetch(`${SUPABASE_URL}/functions/v1/create-provision-token`, {
+    if (!session) {
+      showToast('Session expired. Please sign in again.', 'error');
+      logout();
+      return;
+    }
+    
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/pair-device`, {
       method: 'POST',
-      headers: { 
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
         'apikey': SUPABASE_ANON_KEY,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ 
-        device_name: deviceName || 'New Device', 
-        organization_id: currentOrgId,
-        user_id: session.user.id
+      body: JSON.stringify({
+        pairing_code: pairingCode,
+        device_name: deviceName
       })
     });
-    const r = await resp.json();
-    if (!resp.ok) { showToast(r?.error || 'Failed to generate token', 'error'); return; }
-    currentProvisionToken = r.token;
+    
+    const result = await resp.json();
+    
+    if (!resp.ok) {
+      showToast(result?.error || 'Failed to pair device', 'error');
+      return;
+    }
+    
+    showToast('Device paired successfully! It will provision automatically.', 'success');
     closeModal('provisionModal');
-    document.getElementById('provisionTokenDisplay').textContent = r.token;
-    document.getElementById('provisionResult').style.display = 'block';
-
-    // FIX 3: QRCode UMD creates via `new QRCode(element, options)` — element must be a div, not canvas
-    const qrContainer = document.getElementById('provisionQR');
-    qrContainer.innerHTML = '';
-    new QRCode(qrContainer, {
-      text: r.qr_payload || JSON.stringify({ token: r.token, url: SUPABASE_URL }),
-      width: 200, height: 200,
-      colorDark: '#1a1d27', colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M
-    });
-    showToast('Token generated! Expires in 10 minutes.', 'success');
+    loadDevices();
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
-    btn.disabled = false; btn.textContent = 'Generate Token';
+    btn.disabled = false;
+    btn.textContent = 'Pair Device';
   }
 }
 

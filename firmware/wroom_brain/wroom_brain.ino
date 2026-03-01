@@ -24,6 +24,10 @@
 #include <Preferences.h>
 #include <time.h>
 #include <ArduinoJson.h>
+
+// Forward declaration for provision portal
+void provisionDevice(String token);
+
 #include "provision_portal.h"
 
 // ============================================================

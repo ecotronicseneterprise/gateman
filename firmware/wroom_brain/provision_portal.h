@@ -167,7 +167,7 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
 
     <div class="info">
       <strong>Step 1:</strong> Go to dashboard → Devices → Add Device → Generate Token<br>
-      <strong>Step 2:</strong> Copy the token and paste below<br>
+      <strong>Step 2:</strong> Scan QR code OR paste token manually<br>
       <strong>Step 3:</strong> Enter WiFi credentials and submit
     </div>
 
@@ -179,7 +179,13 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
     <form id="provisionForm" onsubmit="submitForm(event)">
       <div class="form-group">
         <label>Provisioning Token *</label>
-        <input type="text" id="token" name="token" placeholder="Paste token from dashboard" required style="font-family:monospace">
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button type="button" onclick="startQRScan()" style="width:auto;padding:8px 16px;font-size:13px">📷 Scan QR Code</button>
+          <button type="button" onclick="stopQRScan()" id="stopBtn" style="width:auto;padding:8px 16px;font-size:13px;display:none;background:#dc2626">Stop Camera</button>
+        </div>
+        <video id="qrVideo" style="width:100%;max-width:300px;border-radius:8px;display:none;margin-bottom:8px"></video>
+        <canvas id="qrCanvas" style="display:none"></canvas>
+        <input type="text" id="token" name="token" placeholder="Paste token or scan QR code" required style="font-family:monospace">
       </div>
 
       <div class="form-group">
@@ -198,7 +204,65 @@ const char PROVISION_HTML[] PROGMEM = R"rawliteral(
     <div id="status" class="info"></div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script>
+    let qrStream = null;
+    let qrScanning = false;
+
+    async function startQRScan() {
+      const video = document.getElementById('qrVideo');
+      const canvas = document.getElementById('qrCanvas');
+      const ctx = canvas.getContext('2d');
+      const stopBtn = document.getElementById('stopBtn');
+      
+      try {
+        qrStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' } 
+        });
+        video.srcObject = qrStream;
+        video.style.display = 'block';
+        stopBtn.style.display = 'inline-block';
+        await video.play();
+        
+        qrScanning = true;
+        scanQRCode(video, canvas, ctx);
+      } catch(err) {
+        alert('Camera access denied or not available: ' + err.message);
+      }
+    }
+
+    function stopQRScan() {
+      qrScanning = false;
+      const video = document.getElementById('qrVideo');
+      const stopBtn = document.getElementById('stopBtn');
+      
+      if (qrStream) {
+        qrStream.getTracks().forEach(track => track.stop());
+        qrStream = null;
+      }
+      video.style.display = 'none';
+      stopBtn.style.display = 'none';
+    }
+
+    function scanQRCode(video, canvas, ctx) {
+      if (!qrScanning) return;
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      
+      if (code) {
+        document.getElementById('token').value = code.data;
+        stopQRScan();
+        alert('✓ QR Code scanned successfully!');
+      } else {
+        requestAnimationFrame(() => scanQRCode(video, canvas, ctx));
+      }
+    }
+
     async function submitForm(e) {
       e.preventDefault();
       const btn = e.target.querySelector('button');

@@ -460,6 +460,24 @@ void syncOfflineQueue() {
 void loop() {
   // esp_task_wdt_reset();  // Watchdog disabled  // Feed watchdog
 
+  // Check for Serial commands
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd == "RESET" || cmd == "FACTORY_RESET") {
+      Serial.println("[RESET] Clearing all stored credentials...");
+      preferences.begin("ecotron", false);
+      preferences.clear();
+      preferences.end();
+      preferences.begin("gateman", false);
+      preferences.clear();
+      preferences.end();
+      Serial.println("[RESET] NVS cleared. Rebooting into provisioning mode...");
+      delay(1000);
+      ESP.restart();
+    }
+  }
+
   // Auto-timeout enrollment mode (60s)
   if (enrollMode && millis() > enrollTimeout) {
     Serial.println("[ENROLL] Timeout — exiting enroll mode");

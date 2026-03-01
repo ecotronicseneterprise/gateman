@@ -471,10 +471,11 @@ html, body { overflow-x: hidden; }
             <tr>
               <th>Employee</th>
               <th>Department</th>
-              <th>Action</th>
-              <th>Time</th>
+              <th>Date</th>
+              <th>Check In</th>
+              <th>Check Out</th>
               <th>Device</th>
-              <th>Photo</th>
+              <th>Hours</th>
             </tr>
           </thead>
           <tbody id="attendanceTable"></tbody>
@@ -1032,7 +1033,10 @@ function renderEmployeesTable(list) {
       <td><code style="font-size:12px;color:var(--accent2)">${e.rfid_uid||'Not assigned'}</code></td>
       <td><span class="badge present">Active</span></td>
       <td style="color:var(--muted);font-size:12px">${e.email||'—'}</td>
-      <td><button class="btn btn-outline btn-sm" onclick="openAssignRfid('${e.id}')">Assign Card</button></td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="openAssignRfid('${e.id}')">Assign Card</button>
+        <button class="btn btn-red btn-sm" onclick="deleteEmployee('${e.id}', '${e.name}')">Delete</button>
+      </td>
     </tr>`).join('');
 }
 
@@ -1097,36 +1101,61 @@ async function loadAttendance() {
   if (!currentOrgId) return;
   const from = document.getElementById('filterFrom')?.value;
   const to   = document.getElementById('filterTo')?.value;
-  let q = sb.from('attendance_logs')
-    .select('*, users(name, employee_id, department), devices(name)')
-    .eq('organization_id', currentOrgId).order('timestamp', { ascending: false }).limit(200);
-  if (from) q = q.gte('timestamp', from + 'T00:00:00');
-  if (to)   q = q.lte('timestamp', to   + 'T23:59:59');
-  const { data: records } = await q;
-  if (!records) return;
-  const tb = document.getElementById('attendanceTable');
-  tb.innerHTML = '';
-  for (const r of records) {
-    const name      = r.users?.name || 'Unknown';
-    const empId     = r.users?.employee_id || '';
-    const dept      = r.users?.department || '—';
-    const devName   = r.devices?.name || '';
-    const photoUrl  = r.photo_url || '';
-    let photoHtml   = '<span style="color:var(--muted);font-size:12px">No photo</span>';
-    if (photoUrl) {
-      const signed = await loadSignedUrl(photoUrl);
-      if (signed) photoHtml = `<img src="${signed}" style="width:36px;height:36px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'">`;
-    }
-    tb.innerHTML += `
-      <tr>
-        <td><strong>${name}</strong><br><span style="font-size:11px;color:var(--muted)">${empId}</span></td>
-        <td>${dept}</td>
-        <td><span class="feed-badge ${r.action==='check_in'?'in':'out'}">${r.action==='check_in'?'CHECK IN':'CHECK OUT'}</span></td>
-        <td style="font-size:13px">${new Date(r.timestamp).toLocaleString('en-GB')}</td>
-        <td style="color:var(--muted);font-size:13px">${devName}</td>
-        <td>${photoHtml}</td>
-      </tr>`;
+  
+  // Use smart attendance view (first-in, last-out per day)
+  const { data: logs, error } = await sb.rpc('get_smart_attendance', {
+    org_id: currentOrgId,
+    from_date: from ? from + 'T00:00:00' : null,
+    to_date: to ? to + 'T23:59:59' : null
+  });
+  
+  if (error) {
+    console.error('Smart attendance error:', error);
+    showToast('Failed to load attendance records', 'error');
+    return;
   }
+  
+  if (!logs || logs.length === 0) {
+    document.getElementById('attendanceTable').innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No attendance records found</td></tr>';
+    return;
+  }
+  
+  document.getElementById('attendanceTable').innerHTML = logs.map(log => {
+    const checkInPhoto = log.check_in_photo ? `<img src="#" data-photo="${log.check_in_photo}" class="photo-thumb" onclick="viewPhoto(this)" style="width:30px;height:30px;border-radius:4px;cursor:pointer;object-fit:cover" onerror="this.style.display='none'">` : '—';
+    const checkOutPhoto = log.check_out_photo ? `<img src="#" data-photo="${log.check_out_photo}" class="photo-thumb" onclick="viewPhoto(this)" style="width:30px;height:30px;border-radius:4px;cursor:pointer;object-fit:cover" onerror="this.style.display='none'">` : '—';
+    const hours = log.hours_worked ? log.hours_worked.toFixed(1) + 'h' : '—';
+    
+    return `<tr>
+      <td><strong>${log.name||'Unknown'}</strong><br><span style="font-size:11px;color:var(--muted)">${log.employee_id||'—'}</span></td>
+      <td>${log.department||'—'}</td>
+      <td style="font-size:12px">${new Date(log.date).toLocaleDateString()}</td>
+      <td style="font-size:12px">${log.check_in_time ? new Date(log.check_in_time).toLocaleTimeString() : '—'}<br>${checkInPhoto}</td>
+      <td style="font-size:12px">${log.check_out_time ? new Date(log.check_out_time).toLocaleTimeString() : '—'}<br>${checkOutPhoto}</td>
+      <td style="font-size:12px">${log.check_in_device||'—'}</td>
+      <td><strong>${hours}</strong></td>
+    </tr>`;
+  }).join('');
+  loadSignedUrls();
+}
+
+async function deleteEmployee(userId, userName) {
+  if (!confirm(`Are you sure you want to delete ${userName}? This will remove all their credentials but preserve attendance history.`)) return;
+  
+  const { error } = await sb.from('users').update({ active: false }).eq('id', userId);
+  if (error) return showToast(error.message || 'Failed to delete employee', 'error');
+  
+  showToast('Employee deleted successfully', 'success');
+  loadEmployees();
+}
+
+function loadSignedUrls() {
+  document.querySelectorAll('img[data-photo]').forEach(async img => {
+    const path = img.getAttribute('data-photo');
+    if (path) {
+      const url = await loadSignedUrl(path);
+      if (url) img.src = url;
+    }
+  });
 }
 
 // ============================================================

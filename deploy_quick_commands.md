@@ -125,6 +125,12 @@ sudo systemctl restart nginx
 ```bash
 # SSH into server
 ssh deploy@46.225.186.103
+cd /var/www/gateman
+
+Type RESET in Serial Monitor
+Re-provision with new token
+Type STATUS to verify credentials
+Tap a card → expect HTTP 200
 
 # Install Node.js (if not installed)
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -

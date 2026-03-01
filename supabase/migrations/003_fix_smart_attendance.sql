@@ -1,9 +1,4 @@
--- ============================================================
--- SMART ATTENDANCE VIEW - First In, Last Out Per Day
--- Run in Supabase SQL Editor
--- ============================================================
-
--- Create a database function to get smart attendance (first-in, last-out per day)
+-- Fix ambiguous user_id column in get_smart_attendance function
 CREATE OR REPLACE FUNCTION get_smart_attendance(
   org_id UUID,
   from_date TIMESTAMPTZ DEFAULT NULL,
@@ -93,9 +88,3 @@ BEGIN
   ORDER BY fi.log_date DESC, fi.check_in_time DESC;
 END;
 $$;
-
--- Grant execute permission to authenticated users
-GRANT EXECUTE ON FUNCTION get_smart_attendance(UUID, TIMESTAMPTZ, TIMESTAMPTZ) TO authenticated;
-
--- Test the function
--- SELECT * FROM get_smart_attendance('your-org-id'::UUID);

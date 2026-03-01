@@ -229,7 +229,8 @@ void enterProvisioningMode() {
 // ============================================================
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
+  Serial.println("[BUILD] " __DATE__ " " __TIME__);
 
   // Ensure GPIO0 is set to INPUT_PULLUP to help with boot mode
   pinMode(0, INPUT_PULLUP);
@@ -917,6 +918,7 @@ void downloadUsers() {
   HTTPClient http;
   http.begin(SUPABASE_URL + "/functions/v1/get-users");
   http.addHeader("Content-Type", "application/json");
+  Serial.println("[USERS] Adding apikey header");
   http.addHeader("apikey", SUPABASE_ANON_KEY);
   http.setTimeout(8000);
   

@@ -18,14 +18,13 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <SPI.h>
 #include <MFRC522.h>
-#include <mbedtls/md.h>
-#include <time.h>
-#include <esp_task_wdt.h>
-#include <Preferences.h>
 #include <SPIFFS.h>
+#include <Preferences.h>
+#include <time.h>
+#include <ArduinoJson.h>
+#include <esp_efuse.h>
 #include "provision_portal.h"
 
 // ============================================================

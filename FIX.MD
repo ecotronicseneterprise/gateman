@@ -701,8 +701,10 @@
   }
 ]
 
+https://46.225.186.103/  - homepage
 
-``bash
+get a domain soon and point it there
+` `bash
 # SSH into server
 ssh deploy@46.225.186.103
 cd /var/www/gateman

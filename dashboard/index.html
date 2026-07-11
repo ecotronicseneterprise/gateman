@@ -1199,12 +1199,15 @@ async function startEnrollment() {
 
     const resp = await fetch(`${SUPABASE_URL}/functions/v1/start-enrollment`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        user_id: userId, 
-        device_id: deviceId, 
-        organization_id: currentOrgId,
-        caller_user_id: session.user.id 
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        device_id: deviceId,
+        organization_id: currentOrgId
       })
     });
     const r = await resp.json();

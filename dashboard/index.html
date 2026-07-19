@@ -448,7 +448,7 @@ html, body { overflow-x: hidden; }
               <th>Department</th>
               <th>RFID Card</th>
               <th>Status</th>
-              <th>Last Seen</th>
+              <th>Email</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -520,6 +520,20 @@ html, body { overflow-x: hidden; }
           </div>
           <button class="btn btn-outline btn-sm" onclick="cancelEnrollment()" id="enrollCancelBtn" style="margin-top:12px">Cancel</button>
         </div>
+      </div>
+
+      <!-- Card Management -->
+      <div class="table-card" style="margin-bottom:24px">
+        <div class="table-header" style="border-bottom:1px solid var(--border)">
+          <span style="font-size:14px;font-weight:600">Card Assignments</span>
+          <span style="font-size:12px;color:var(--muted)">Remove a card here to free it for re-enrollment</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Employee</th><th>Card UID</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="cardMgmtTable"></tbody>
+        </table>
       </div>
 
       <!-- Recent Enrollments -->
@@ -1143,9 +1157,6 @@ function renderEmployeesTable(list) {
       <td><span class="badge present">Active</span></td>
       <td style="color:var(--muted);font-size:12px">${e.email||'—'}</td>
       <td>
-        ${e.rfid_uid
-          ? `<button class="btn btn-outline btn-sm" onclick="removeCard('${e.id}', '${e.name}', '${e.rfid_uid}')">Remove Card</button>`
-          : `<button class="btn btn-outline btn-sm" onclick="openAssignRfid('${e.id}')">Assign Card</button>`}
         <button class="btn btn-red btn-sm" onclick="deleteEmployee('${e.id}', '${e.name}')">Delete</button>
       </td>
     </tr>`).join('');
@@ -1161,8 +1172,9 @@ async function removeCard(userId, name, rfidUid) {
     .eq('value', rfidUid);
   if (error) return showToast(error.message || 'Failed to remove card', 'error');
   if (!count) return showToast('Nothing deleted — run migration 005 (credentials_delete policy) in Supabase SQL Editor', 'error');
-  showToast(`Card ${rfidUid} removed from ${name}`);
+  showToast(`Card ${rfidUid} removed from ${name} — free to re-enroll (device cache refreshes within ~5 min)`);
   loadEmployees();
+  loadCardMgmt();
 }
 
 function openAddEmployee() { document.getElementById('addEmployeeModal').classList.add('open'); }
@@ -1217,6 +1229,7 @@ async function completeAssignment() {
   closeModal('assignModal');
   showToast('RFID card assigned successfully', 'success');
   loadEmployees();
+  loadCardMgmt();
 }
 
 // ============================================================
@@ -1264,13 +1277,18 @@ async function loadAttendance() {
 }
 
 async function deleteEmployee(userId, userName) {
-  if (!confirm(`Are you sure you want to delete ${userName}? This will remove all their credentials but preserve attendance history.`)) return;
-  
-  const { error } = await sb.from('users').update({ active: false }).eq('id', userId);
+  if (!confirm(`PERMANENTLY delete ${userName}?\n\nThis removes the employee AND frees their card for re-enrollment. Past attendance records are kept but will show as "Unknown".\n\nThis cannot be undone.`)) return;
+
+  const { error, count } = await sb.from('users')
+    .delete({ count: 'exact' })
+    .eq('id', userId)
+    .eq('organization_id', currentOrgId);
   if (error) return showToast(error.message || 'Failed to delete employee', 'error');
-  
-  showToast('Employee deleted successfully', 'success');
+  if (!count) return showToast('Nothing deleted — run migration 006 (users_delete policy) in Supabase SQL Editor', 'error');
+
+  showToast(`${userName} permanently deleted — their card is now free`);
   loadEmployees();
+  loadCardMgmt();
 }
 
 function loadSignedUrls() {
@@ -1419,9 +1437,37 @@ function showEnrollStatus(type, text) {
   }
 }
 
+async function loadCardMgmt() {
+  const tbody = document.getElementById('cardMgmtTable');
+  if (!tbody || !currentOrgId) return;
+  const { data: users } = await sb.from('users')
+    .select('id, name, employee_id, user_credentials(type, value)')
+    .eq('organization_id', currentOrgId)
+    .eq('active', true)
+    .order('name');
+  if (!users || users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:24px">No employees yet — add one on the Employees page</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => {
+    const rfid = (u.user_credentials || []).find(c => c.type === 'rfid');
+    return `<tr>
+      <td><strong>${u.name}</strong> <span style="color:var(--muted);font-size:12px">${u.employee_id}</span></td>
+      <td><code style="font-size:12px;color:${rfid ? 'var(--accent2)' : 'var(--muted)'}">${rfid ? rfid.value : 'No card'}</code></td>
+      <td>
+        ${rfid
+          ? `<button class="btn btn-red btn-sm" onclick="removeCard('${u.id}', '${u.name}', '${rfid.value}')">Remove Card</button>`
+          : `<button class="btn btn-outline btn-sm" onclick="openAssignRfid('${u.id}')">Type UID Manually</button>
+             <span style="color:var(--muted);font-size:12px">or enroll by tap above</span>`}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
 async function loadEnrollments() {
   if (!currentOrgId) return;
   loadEnrollmentDropdowns();
+  loadCardMgmt();
   const { data: list } = await sb.from('enrollment_queue')
     .select('*, devices(name), users!enrollment_queue_assigned_to_fkey(name, employee_id)')
     .eq('organization_id', currentOrgId)

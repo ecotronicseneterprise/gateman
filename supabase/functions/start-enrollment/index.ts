@@ -1,12 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getSupabaseAdmin, auditLog } from "../_shared/auth.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSupabaseAdmin, auditLog, checkRateLimit } from "../_shared/auth.ts";
 import { handleCors, jsonResponse, errorResponse } from "../_shared/cors.ts";
 
 /**
  * start-enrollment — Admin initiates card enrollment for an employee.
  *
  * Body: { user_id, device_id, organization_id }
- * Auth: Supabase JWT (admin/owner)
+ * Auth: Supabase JWT (admin/owner) — verified via Authorization header.
  *
  * Creates a 'waiting' record in enrollment_queue.
  * The device polls check-enrollment and enters enroll mode when it sees this.
@@ -16,24 +17,51 @@ serve(async (req: Request) => {
   if (corsResp) return corsResp;
 
   try {
+    // Authenticate caller via JWT (mirrors create-checkout / create-provision-token)
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return errorResponse("missing authorization", 401);
+
+    const supabaseUser = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
+    if (authErr || !user) return errorResponse("unauthorized", 401);
+
     const supabase = getSupabaseAdmin();
     const body = await req.json();
-    const { user_id, device_id, organization_id, caller_user_id } = body;
+    const { user_id, device_id, organization_id } = body;
 
-    if (!user_id || !device_id || !organization_id || !caller_user_id) {
-      return errorResponse("missing fields: user_id, device_id, organization_id, caller_user_id", 400);
+    if (!user_id || !device_id || !organization_id) {
+      return errorResponse("missing fields: user_id, device_id, organization_id", 400);
     }
 
-    // Verify caller is admin/owner of this org
+    // Verify caller is admin/owner of this org — caller identity now comes from
+    // the verified JWT (user.id), not a client-supplied caller_user_id field.
     const { data: membership } = await supabase
       .from("org_members")
       .select("role")
-      .eq("user_id", caller_user_id)
+      .eq("user_id", user.id)
       .eq("organization_id", organization_id)
       .in("role", ["owner", "admin"])
       .maybeSingle();
 
     if (!membership) return errorResponse("forbidden", 403);
+
+    // Rate limit: max 20 enrollment starts per org per 5 minutes — generous
+    // enough for onboarding a batch of employees, tight enough to block abuse.
+    const rateLimited = await checkRateLimit(supabase, {
+      organization_id,
+      actor_id: user.id,
+      action: "enrollment.initiated",
+      maxCount: 20,
+      windowMinutes: 5,
+    });
+    if (rateLimited) {
+      return errorResponse("Too many enrollment requests. Try again in a few minutes.", 429);
+    }
 
     // Verify device belongs to this org
     const { data: device } = await supabase
@@ -77,7 +105,7 @@ serve(async (req: Request) => {
     auditLog(supabase, {
       organization_id,
       actor_type: "user",
-      actor_id: caller_user_id,
+      actor_id: user.id,
       action: "enrollment.initiated",
       resource_type: "enrollment_queue",
       resource_id: enroll.id,

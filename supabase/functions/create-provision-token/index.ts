@@ -24,8 +24,21 @@ Deno.serve(async (req: Request) => {
   if (cors) return cors;
 
   try {
-    const { device_name, organization_id, user_id } = await req.json();
-    
+    // Authenticate caller via JWT (mirrors create-checkout's pattern)
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return errorResponse('missing authorization', 401);
+
+    const supabaseUser = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: authErr } = await supabaseUser.auth.getUser();
+    if (authErr || !user) return errorResponse('unauthorized', 401);
+
+    const { device_name, organization_id } = await req.json();
+
     if (!organization_id) {
       return errorResponse('organization_id required', 400);
     }
@@ -36,8 +49,36 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const userId = user_id || 'system';
+    // Verify caller is owner/admin of this org — the entire vulnerability being fixed
+    // was that this check was previously absent, letting anyone mint a provisioning
+    // token for any organization_id with no authentication at all.
+    const { data: membership } = await supabase
+      .from('org_members')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('organization_id', organization_id)
+      .single();
+
+    if (!membership || !['owner', 'admin'].includes(membership.role)) {
+      return errorResponse('forbidden — must be owner or admin', 403);
+    }
+
+    const userId = user.id;
     console.log('[create-provision-token] generating token for org:', organization_id);
+
+    // 1b. Rate limit: max 10 tokens per org per 10 minutes (already-imported
+    // helper was previously unused — normal admin usage never approaches this,
+    // it only blocks token-minting abuse).
+    const rateLimited = await checkRateLimit(supabase, {
+      organization_id,
+      actor_id: userId,
+      action: 'provision_token.created',
+      maxCount: 10,
+      windowMinutes: 10,
+    });
+    if (rateLimited) {
+      return errorResponse('Too many provisioning tokens requested. Try again in a few minutes.', 429);
+    }
 
     // 2. Check device limit
     const { count: deviceCount } = await supabase

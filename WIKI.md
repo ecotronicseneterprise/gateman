@@ -1,6 +1,6 @@
 # EcoTronics Gateman — Technical Wiki
 
-> **Last generated:** 2026-05-08  
+> **Last generated:** 2026-05-08 (deployment section updated 2026-07-18 — new VPS `89.167.93.25`)  
 > **Codebase state:** v3 WROOM firmware, v2 CAM firmware, Supabase Edge Functions (Deno)
 
 ---
@@ -100,7 +100,7 @@ Gateman is a multi-tenant SaaS employee attendance system built around commodity
 | Charts | Chart.js 4.4.1 |
 | QR codes | QRCode.js 1.0.0 |
 | Payments | Paystack (NGN) |
-| Hosting (dashboard) | `serve` npm package on port 3000 / VPS at 46.225.186.103 |
+| Hosting (dashboard) | Static file served by Caddy — https://gateman.89.167.93.25.sslip.io |
 
 ---
 
@@ -254,17 +254,20 @@ Core attendance sync endpoint. Called once per tap event.
 { "status": "ok", "inserted": false, "log_id": null  }    // duplicate — safe to retry
 ```
 
-**Error codes:** `400` missing fields, `401` bad credentials, `403` subscription inactive, `422` timestamp >7 days old or >5 min future, `429` rate limited (60/min), `500` DB error.
+**Error codes:** `400` missing fields, `401` bad credentials, `403` subscription inactive (audited), `422` timestamp >5 min in future, `429` rate limited (60/min), `500` DB error.
+
+**Stale/unparseable events (updated 2026-07-19):** events older than 7 days — or with timestamps the server cannot parse (see the `timestampToISO` firmware bug in §9) — are **accepted-and-discarded** with `200 {status:"ok", inserted:false, discarded:"stale_timestamp"|"invalid_timestamp"}` instead of a 4xx. A 4xx would leave them retrying in the device's offline queue forever (the firmware has no queue-age check and no serial command to clear SPIFFS); a 200 makes the firmware count them as synced and drop them from its queue. The discard is recorded in `audit_logs` as `attendance.rejected` (reason `stale_timestamp`). Future-stamped events still get `422` because they become valid once the device clock catches up.
 
 **Logic:**
-1. Validate required fields + timestamp window
+1. Validate required fields + timestamp format (future check pre-auth; stale check after auth so it can be audited)
 2. Authenticate device
-3. Rate-limit check (60 submissions/min per device)
-4. Check subscription active
-5. Resolve `credential_value` → `user_id` via `user_credentials` table (returns `null` if unknown card — log still recorded)
-6. `UPSERT` into `attendance_logs` with `ON CONFLICT (device_id, device_event_id) DO NOTHING` — safe to retry
-7. Fire-and-forget: decode base64, upload to `attendance-photos/{org_id}/{device_id}/{log_id}.jpg`, update `photo_url`
-8. Audit log
+3. Stale event (>7 days)? → audit `attendance.rejected` + return 200-discard (see above)
+4. Rate-limit check (60 submissions/min per device)
+5. Check subscription active → on failure audit `attendance.rejected` (reason `subscription_inactive`) + 403
+6. Resolve `credential_value` → `user_id` via `user_credentials` table (returns `null` if unknown card — log still recorded, plus `attendance.unknown_credential` audit row so the dashboard can surface unenrolled cards)
+7. `UPSERT` into `attendance_logs` with `ON CONFLICT (device_id, device_event_id) DO NOTHING` — safe to retry
+8. Fire-and-forget: decode base64, upload to `attendance-photos/{org_id}/{device_id}/{log_id}.jpg`, update `photo_url`
+9. Audit log (`attendance.submitted`)
 
 ---
 
@@ -630,6 +633,8 @@ The `SUPABASE_ANON_KEY` is also embedded in the firmware and the dashboard (it i
 
 ### 4.1 Pin Assignments
 
+> Physically verified against the production build on 2026-07-18 — see [WIRING.md](WIRING.md) for the full continuity-tested wiring reference, wire colours, and power topology.
+
 | Pin | GPIO | Connected to |
 |---|---|---|
 | RFID SS (SDA) | 5 | MFRC522 SDA |
@@ -637,10 +642,13 @@ The `SUPABASE_ANON_KEY` is also embedded in the firmware and the dashboard (it i
 | RFID MOSI | 23 | MFRC522 MOSI |
 | RFID MISO | 19 | MFRC522 MISO |
 | RFID RST | — | Tied to 3.3V (not software-controlled) |
+| RFID IRQ | — | Not connected (floating) — unused by firmware |
 | CAM RX | 16 | ESP32-CAM GPIO13 (CAM TX) |
 | CAM TX | 17 | ESP32-CAM GPIO12 (CAM RX) |
-| Enroll button | 4 | Push-button to GND, internal pullup |
+| Enroll button | 4 | **Not wired in the physical build** — firmware supports a push-button to GND (internal pullup keeps the pin safely HIGH without one); enrollment is dashboard-driven only |
 | Status LED | 2 | On-board blue LED |
+
+**Power:** 18650 power bank → USB hub → separate 5V feeds to WROOM and CAM, with a common ground wire between the boards. MFRC522 is powered from the WROOM 3.3V pin (never 5V).
 
 ### 4.2 Key Constants
 
@@ -968,12 +976,14 @@ A single HTML file (~4 000 lines) containing all CSS, HTML, and JavaScript. No b
 
 | Page | Nav item | What it shows |
 |---|---|---|
-| **Dashboard** | Dashboard | 4 stat cards; hourly bar chart; department doughnut; 7-day line chart; live attendance feed |
+| **Dashboard** | Dashboard | 4 stat cards (Devices card shows device name + last-seen, red when >10 min silent); hourly bar chart; department doughnut; 7-day line chart; live attendance feed (unenrolled cards shown amber as "Unknown card · UID … · not enrolled") |
 | **Employees** | Employees | Searchable table of active employees with RFID status; Add Employee modal; Assign Card modal; Delete button |
 | **Attendance** | Attendance | Date-filtered smart attendance table (first check-in / last check-out per person per day) with photos; CSV export |
 | **Enrollment** | Enrollment | Employee + device selectors; Enroll Card button; live enrollment status with countdown; recent enrollments table |
 | **Devices** | Devices | List of devices (UID, location, status, last seen); Add Device → provision token + QR code |
-| **Admin** | Admin | Subscription info (plan, limits, period end); org stats; last 50 audit trail events |
+| **Admin** | Admin | Subscription info (plan, limits, period end); **Device Health** card (per-device last-seen, 🔴 if >10 min); **Recent Rejections** table (`attendance.rejected` / `attendance.unknown_credential` audit rows); org stats; last 50 audit trail events |
+
+**Global health banner (added 2026-07-19):** every page shows a banner (refreshed every 2 min) — red when the subscription is inactive/expired ("device logs are being REJECTED"), amber when the trial ends within 7 days or an active device hasn't been seen for >10 minutes. Added after a 4-month silent failure where an expired trial rejected all device logs with no dashboard indication.
 
 ### 6.2 Authentication Flow
 
@@ -1288,22 +1298,36 @@ npx supabase secrets set PAYSTACK_SECRET_KEY=sk_live_xxxxx --project-ref ueobebs
 
 ### 8.3 VPS / Production Deployment
 
-Current production server: `46.225.186.103`
+Current production server: `89.167.93.25` (Hetzner). Dashboard URL: **https://gateman.89.167.93.25.sslip.io**
 
-```bash
-# SSH into server
-ssh deploy@46.225.186.103
-cd /var/www/gateman
+The dashboard is a single static file (`dashboard/index.html`) served by Caddy from `/var/www/gateman/dashboard/`. The Caddy site block lives in `/etc/caddy/Caddyfile`:
 
-# Pull latest code
-git pull origin main
-
-# Dashboard is served statically — no restart needed
-# If using a process manager:
-pm2 restart gateman-dashboard
+```
+gateman.89.167.93.25.sslip.io {
+    root * /var/www/gateman/dashboard
+    file_server
+    log {
+        output file /var/log/caddy/gateman-access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}
 ```
 
-A custom domain is planned; currently accessed by IP.
+To update the dashboard:
+
+```bash
+# From this repo on your PC (deploy user has no passwordless sudo —
+# scp to home first, then install with sudo):
+scp dashboard/index.html deploy@89.167.93.25:/home/deploy/gateman-dashboard-index.html
+ssh -t deploy@89.167.93.25 "sudo cp /home/deploy/gateman-dashboard-index.html /var/www/gateman/dashboard/index.html"
+# Static file — no service restart needed
+```
+
+Gotcha: Caddy runs as user `caddy`. Any log file referenced in the Caddyfile must be owned `caddy:caddy` or `systemctl reload caddy` fails (config validates but the running process can't open the log). Fix: `sudo chown caddy:caddy /var/log/caddy/gateman-access.log`.
+
+The VPS only hosts the dashboard. The boards talk directly to Supabase — attendance logging works even if the VPS is down. A custom domain is planned; currently accessed via sslip.io.
 
 ### 8.4 Firmware Flash Order
 
@@ -1370,11 +1394,12 @@ A custom domain is planned; currently accessed by IP.
 - **`--no-verify-jwt` on device functions**: required because devices use their own auth (uid+secret), not Supabase JWTs. Re-deploying without this flag would break all device auth.
 - **RFID UIDs as credentials**: standard Mifare UIDs are not encrypted and can be cloned with a card duplicator. The system does not detect cloned cards.
 - **Photo base64 over UART**: at 9600 baud, a 20 KB photo takes ~20 s to transmit. This is the primary sync bottleneck.
-- **Timestamp window (7 days / 5 min)**: events older than 7 days are rejected by `/submit-log`. Long offline periods exceeding 7 days will cause log loss on sync.
+- **Timestamp window (7 days / 5 min)**: events older than 7 days are accepted-but-discarded by `/submit-log` (auditable as `attendance.rejected`, self-cleans the device queue). Long offline periods exceeding 7 days still mean those events are not stored — the change makes the loss visible and non-clogging, not recoverable.
 
 ### TODOs / Gaps
 
-- `submit-log` validates timestamps to within 7 days, but the SPIFFS offline queue has no maximum age check — very old queued events will be rejected by the server when eventually synced.
+- ~~`submit-log` validates timestamps to within 7 days, but the SPIFFS offline queue has no maximum age check — very old queued events will be rejected by the server when eventually synced.~~ **Fixed 2026-07-19:** stale events are now accepted-and-discarded (200) so devices self-clean their queues; discards are audited as `attendance.rejected`.
+- **FIRMWARE BUG (fix on next reflash):** `timestampToISO()` in `wroom_brain.ino` does `gmtime((time_t*)&e)` where `e` is a 4-byte `unsigned long` but ESP32 `time_t` is 8 bytes — `gmtime` reads 4 bytes of adjacent stack garbage, intermittently producing absurd dates (observed: year 2818659) depending on call path. The SPIFFS offline-queue sync path was affected on every cycle. Correct fix: `time_t t = (time_t)e; gmtime(&t);`. Server-side mitigation (2026-07-19): `submit-log` accepts-and-discards unparseable timestamps (audited as `attendance.rejected`, reason `invalid_timestamp`) so affected events self-clean from device queues instead of retrying a 400 forever. The events' true times are unrecoverable — the log entry is lost, visibly.
 - `handleDeleteUser` and `handleUpdateUser` in `esp32cam_slave.ino` use naive string-search JSON manipulation, which can corrupt `/users.json` on malformed input.
 - The `claim-device` and `pair-device` Edge Functions exist in the repo but are not documented or called anywhere in the current firmware or dashboard.
 - The `get_smart_attendance` RPC is called by the dashboard but is not in `001_complete_schema.sql` — it must have been applied separately or is missing from the migration file.

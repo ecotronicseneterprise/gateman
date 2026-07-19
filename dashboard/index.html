@@ -369,6 +369,9 @@ html, body { overflow-x: hidden; }
   </div><!-- end .sidebar -->
 
   <div class="main">
+    <!-- GLOBAL HEALTH BANNER (all pages) -->
+    <div id="globalBanner" style="display:none;padding:12px 16px;border-radius:var(--radius);margin-bottom:16px;font-size:14px;font-weight:500;border:1px solid transparent"></div>
+
     <!-- DASHBOARD PAGE -->
     <div class="page active" id="page-dashboard">
       <div class="page-header">
@@ -397,7 +400,7 @@ html, body { overflow-x: hidden; }
         <div class="stat-card yellow">
           <div class="stat-label">Devices</div>
           <div class="stat-value" id="statDevices">—</div>
-          <div class="stat-sub">Active readers</div>
+          <div class="stat-sub" id="statDevicesSub">Active readers</div>
         </div>
       </div>
 
@@ -596,6 +599,24 @@ html, body { overflow-x: hidden; }
       <div class="chart-card" style="margin-bottom:20px">
         <div class="chart-title">Subscription</div>
         <div id="adminSubInfo" style="color:var(--muted);font-size:14px">Loading...</div>
+      </div>
+
+      <div class="chart-card" style="margin-bottom:20px">
+        <div class="chart-title">Device Health</div>
+        <div id="deviceHealthList" style="font-size:14px">Loading...</div>
+      </div>
+
+      <div class="table-card" style="margin-bottom:20px">
+        <div class="table-header" style="border-bottom:1px solid var(--border)">
+          <span style="font-size:14px;font-weight:600">Recent Rejections</span>
+          <span style="font-size:12px;color:var(--muted)">Rejected/unknown taps · last 20</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Reason</th><th>Card</th><th>Event</th></tr>
+          </thead>
+          <tbody id="rejectionsTable"></tbody>
+        </table>
       </div>
 
       <div class="stats-grid" style="margin-bottom:20px">
@@ -799,6 +820,61 @@ async function showApp() {
   document.getElementById('todayDate').textContent = new Date().toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long'});
   initRealtime();
   loadDashboard();
+  checkSystemHealth();
+  setInterval(checkSystemHealth, 120000);
+}
+
+// ============================================================
+// SYSTEM HEALTH BANNER (all pages)
+// ============================================================
+async function checkSystemHealth() {
+  if (!currentOrgId) return;
+  const banner = document.getElementById('globalBanner');
+  if (!banner) return;
+
+  const [{ data: sub }, { data: devices }] = await Promise.all([
+    sb.from('subscriptions').select('status, plan_type, trial_ends_at, current_period_end')
+      .eq('organization_id', currentOrgId).in('status', ['active','trial','past_due','cancelled']).limit(1).single(),
+    sb.from('devices').select('name, last_seen').eq('organization_id', currentOrgId).eq('status', 'active'),
+  ]);
+
+  const problems = [];
+  const warnings = [];
+
+  if (!sub) {
+    problems.push('No subscription found — device attendance logs are being REJECTED.');
+  } else if (sub.status === 'trial') {
+    const daysLeft = sub.trial_ends_at ? Math.ceil((new Date(sub.trial_ends_at) - Date.now()) / 86400000) : null;
+    if (daysLeft !== null && daysLeft <= 0) {
+      problems.push('Trial EXPIRED — device attendance logs are being REJECTED. Set subscription status to active.');
+    } else if (daysLeft !== null && daysLeft <= 7) {
+      warnings.push(`Trial ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'} — logs will be rejected after that.`);
+    }
+  } else if (sub.status === 'past_due' || sub.status === 'cancelled') {
+    problems.push(`Subscription ${sub.status.replace('_',' ')} — device attendance logs are being REJECTED.`);
+  }
+
+  (devices || []).forEach(d => {
+    const mins = d.last_seen ? Math.round((Date.now() - new Date(d.last_seen)) / 60000) : null;
+    if (mins === null) warnings.push(`Device "${d.name}" has never been seen online.`);
+    else if (mins > 10) warnings.push(`Device "${d.name}" last seen ${mins < 120 ? mins + ' min' : Math.round(mins/60) + ' h'} ago — check power/WiFi.`);
+  });
+
+  if (problems.length) {
+    banner.style.display = 'block';
+    banner.style.background = 'rgba(239,68,68,.12)';
+    banner.style.borderColor = 'var(--red)';
+    banner.style.color = 'var(--red)';
+    banner.textContent = '🚨 ' + problems.concat(warnings).join(' · ');
+  } else if (warnings.length) {
+    banner.style.display = 'block';
+    banner.style.background = 'rgba(234,179,8,.12)';
+    banner.style.borderColor = 'var(--yellow)';
+    banner.style.color = 'var(--yellow)';
+    banner.textContent = '⚠️ ' + warnings.join(' · ');
+  } else {
+    banner.style.display = 'none';
+  }
 }
 
 // Check existing session on load
@@ -889,6 +965,21 @@ async function loadStats() {
   document.getElementById('statIn').textContent      = data.checked_in;
   document.getElementById('statTaps').textContent    = data.today_records;
   document.getElementById('statDevices').textContent = data.devices;
+  loadDeviceLastSeen();
+}
+
+async function loadDeviceLastSeen() {
+  const sub = document.getElementById('statDevicesSub');
+  if (!sub) return;
+  const { data: devices } = await sb.from('devices').select('name, last_seen')
+    .eq('organization_id', currentOrgId).eq('status', 'active')
+    .order('last_seen', { ascending: false }).limit(1);
+  const d = devices && devices[0];
+  if (!d) { sub.textContent = 'Active readers'; return; }
+  const mins = d.last_seen ? Math.round((Date.now() - new Date(d.last_seen)) / 60000) : null;
+  if (mins === null) { sub.textContent = `${d.name} · never seen`; sub.style.color = 'var(--red)'; }
+  else if (mins > 10) { sub.textContent = `${d.name} · offline ${mins < 120 ? mins + 'm' : Math.round(mins/60) + 'h'}`; sub.style.color = 'var(--red)'; }
+  else { sub.textContent = `${d.name} · seen ${mins < 2 ? 'just now' : mins + 'm ago'}`; sub.style.color = ''; }
 }
 
 async function loadFeed() {
@@ -914,21 +1005,26 @@ function appendFeedItem(r, container) { container.appendChild(buildFeedItem(r));
 function buildFeedItem(r) {
   const div = document.createElement('div');
   div.className = 'feed-item';
-  const name     = r.users?.name || r.name || 'Unknown';
-  const dept     = r.users?.department || r.department || 'Staff';
+  const isUnknown = !(r.users?.name || (r.name && r.name !== 'Unknown'));
+  const name     = isUnknown ? 'Unknown card' : (r.users?.name || r.name);
+  const dept     = isUnknown ? (r.credential_value ? `UID ${r.credential_value} · not enrolled` : 'Not enrolled')
+                             : (r.users?.department || r.department || 'Staff');
   const devName  = r.devices?.name || '';
-  const initials = name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+  const initials = isUnknown ? '?' : name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
   const time     = new Date(r.timestamp).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
   const photoUrl = r.photo_url || '';
   let avatarHtml = initials;
   if (photoUrl) avatarHtml = `<img src="" data-photo="${photoUrl}" onerror="this.parentElement.textContent='${initials}'" style="width:100%;height:100%;object-fit:cover">`;
+  const badge = isUnknown
+    ? `<span class="feed-badge" style="background:rgba(234,179,8,.15);color:var(--yellow)">?</span>`
+    : `<span class="feed-badge ${r.action==='check_in'?'in':'out'}">${r.action==='check_in'?'IN':'OUT'}</span>`;
   div.innerHTML = `
-    <div class="feed-avatar">${avatarHtml}</div>
+    <div class="feed-avatar"${isUnknown ? ' style="color:var(--yellow)"' : ''}>${avatarHtml}</div>
     <div class="feed-info">
-      <div class="feed-name">${name}</div>
-      <div class="feed-meta">${dept} · ${devName}</div>
+      <div class="feed-name"${isUnknown ? ' style="color:var(--yellow)"' : ''}>${name}</div>
+      <div class="feed-meta">${dept}${devName ? ' · ' + devName : ''}</div>
     </div>
-    <span class="feed-badge ${r.action==='check_in'?'in':'out'}">${r.action==='check_in'?'IN':'OUT'}</span>
+    ${badge}
     <div class="feed-time">${time}</div>`;
   if (photoUrl) loadSignedUrl(photoUrl).then(url => { const img = div.querySelector('img[data-photo]'); if (img && url) img.src = url; });
   return div;
@@ -1478,7 +1574,57 @@ async function exportCSV() {
 // ============================================================
 async function loadAdminData() {
   if (!currentOrgId || (currentUserRole !== 'owner' && currentUserRole !== 'admin')) return;
-  await Promise.all([loadAdminSubscription(), loadAdminStats(), loadAuditTrail()]);
+  await Promise.all([loadAdminSubscription(), loadAdminStats(), loadAuditTrail(), loadDeviceHealth(), loadRejections()]);
+  checkSystemHealth();
+}
+
+async function loadDeviceHealth() {
+  const { data: devices } = await sb.from('devices')
+    .select('name, location, device_uid, status, last_seen')
+    .eq('organization_id', currentOrgId)
+    .order('last_seen', { ascending: false });
+  const el = document.getElementById('deviceHealthList');
+  if (!el) return;
+  if (!devices || devices.length === 0) { el.innerHTML = '<span style="color:var(--muted)">No devices registered</span>'; return; }
+  el.innerHTML = devices.map(d => {
+    const mins = d.last_seen ? Math.round((Date.now() - new Date(d.last_seen)) / 60000) : null;
+    const stale = mins === null || mins > 10;
+    const label = mins === null ? 'Never seen'
+      : mins < 2 ? 'Just now'
+      : mins < 60 ? `${mins}m ago`
+      : mins < 1440 ? `${Math.round(mins/60)}h ago`
+      : `${Math.round(mins/1440)}d ago`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span>${stale ? '🔴' : '🟢'} <strong>${d.name || d.device_uid}</strong>${d.location ? ' · ' + d.location : ''} <span style="color:var(--muted);font-size:12px">${d.device_uid}</span></span>
+      <span style="color:${stale ? 'var(--red)' : 'var(--muted)'}">${label}${stale && mins !== null ? ' — check power/WiFi' : ''}</span>
+    </div>`;
+  }).join('');
+}
+
+async function loadRejections() {
+  const { data: rejections } = await sb.from('audit_logs')
+    .select('action, metadata, created_at')
+    .eq('organization_id', currentOrgId)
+    .in('action', ['attendance.rejected', 'attendance.unknown_credential'])
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const tbody = document.getElementById('rejectionsTable');
+  if (!tbody) return;
+  if (!rejections || rejections.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">No rejections — all device taps are being accepted</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rejections.map(r => {
+    const m = r.metadata || {};
+    const reason = (m.reason || r.action.replace('attendance.', '')).replace(/_/g, ' ');
+    const isReject = r.action === 'attendance.rejected';
+    return `<tr>
+      <td style="white-space:nowrap">${new Date(r.created_at).toLocaleString()}</td>
+      <td><span style="background:${isReject ? 'rgba(239,68,68,.12)' : 'rgba(234,179,8,.12)'};color:${isReject ? 'var(--red)' : 'var(--yellow)'};padding:2px 8px;border-radius:4px;font-size:12px">${isReject ? '🚫' : '❓'} ${reason}</span></td>
+      <td>${m.credential_value || '—'}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis">${m.device_event_id || '—'}${m.event_time ? ' · ' + m.event_time : ''}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function loadAdminSubscription() {

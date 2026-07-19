@@ -1,5 +1,7 @@
 # EcoTronic Attendance System - 30-Day Build & Launch Plan
 
+> **⚠️ HISTORICAL DOCUMENT (Feb 2026)** — this was the original build plan and does not match the final system (e.g. no OLED display was used; backend is Supabase, not Node.js). For the current architecture, wiring, and deployment see [README.md](README.md) and [WIKI.md](WIKI.md).
+
 ## 🎯 WEEK 1: Hardware Build (Days 1-7)
 
 ### **Day 1: Component Purchase**

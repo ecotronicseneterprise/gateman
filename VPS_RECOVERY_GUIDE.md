@@ -4,6 +4,16 @@
 **Last rebuild:** 3 June 2026
 **Default IP:** 46.225.186.103 (note: changes on every full rebuild)
 
+> ## ⚠️ UPDATE — 18 July 2026
+> **Current server IP is `89.167.93.25`** — every `46.225.186.103` reference below is the old (dead) server.
+> Current layout differs from the diagram below:
+> - **Gateman dashboard:** `https://gateman.89.167.93.25.sslip.io` — static file at `/var/www/gateman/dashboard/index.html`, own Caddy site block (see [WIKI.md §8.3](WIKI.md) for the block + update procedure)
+> - **JARVIS:** `https://89.167.93.25.sslip.io` (pm2: jarvis-backend/frontend/voice, ports 8000/3001 — no longer Docker)
+> - **PM2 apps:** jarvis-backend, jarvis-frontend, jarvis-voice, upjobs
+> - `/var/www/` holds `ecotronicsenterprise` and `gateman`
+> - SSH: `deploy@89.167.93.25` (key auth). Root SSH denied; `deploy` sudo **requires password** — for remote automation, stage a script and run `ssh -t deploy@89.167.93.25 "sudo bash ~/script.sh"`
+> - Caddy gotcha: log files in the Caddyfile must be owned `caddy:caddy` or reload fails after validating.
+
 This document covers EVERYTHING needed to rebuild this VPS from scratch, or recover from compromise. Read end-to-end before starting. Updated based on real lessons from the 3 June 2026 rebuild.
 
 ---

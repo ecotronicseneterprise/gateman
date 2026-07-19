@@ -25,10 +25,13 @@ import { decode as base64Decode } from 'https://deno.land/std@0.208.0/encoding/b
  *
  * 200: { status: "ok", inserted: true, log_id: "..." }
  * 200: { status: "ok", inserted: false } (duplicate — idempotent)
+ * 200: { status: "ok", inserted: false, discarded: "stale_timestamp" }
+ *      (event older than 7 days — accepted so the device drops it from its
+ *       offline queue, but not stored; audited as attendance.rejected)
  * 400: Missing required fields
  * 401: Invalid device credentials
- * 403: Subscription inactive
- * 422: Timestamp too old (>7 days) or in future (>5 min)
+ * 403: Subscription inactive (audited as attendance.rejected)
+ * 422: Timestamp in future (>5 min) — device should retry
  * 500: Internal error
  */
 Deno.serve(async (req: Request) => {
@@ -50,6 +53,7 @@ Deno.serve(async (req: Request) => {
 
     // Validate required fields
     if (!device_uid || !device_secret || !device_event_id || !credential_value || !event_time || !action) {
+      console.warn(`[submit-log] 400 missing fields | uid=${device_uid ? 'ok' : 'MISSING'} secret=${device_secret ? 'ok' : 'MISSING'} event_id=${device_event_id ?? 'MISSING'} cred=${credential_value ?? 'MISSING'} time=${event_time ?? 'MISSING'} action=${action ?? 'MISSING'}`);
       return errorResponse(
         'Required: device_uid, device_secret, device_event_id, credential_value, event_time, action',
         400
@@ -57,21 +61,22 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action !== 'check_in' && action !== 'check_out') {
+      console.warn(`[submit-log] 400 bad action | action=${action} event=${device_event_id}`);
       return errorResponse('action must be "check_in" or "check_out"', 400);
     }
 
-    // Validate timestamp — reject if older than 7 days or more than 5 min in future
+    // Validate timestamp format; range checks happen after auth so rejections can be audited
+    // Unparseable timestamps (e.g. the firmware's gmtime 32→64-bit cast bug produces
+    // year-2818659 dates) can never become valid — handled after auth as a discard so
+    // the device drops them from its queue instead of retrying a 400 forever.
     const eventTs = new Date(event_time);
-    if (isNaN(eventTs.getTime())) {
-      return errorResponse('Invalid event_time format', 400);
-    }
+    const invalidTime = isNaN(eventTs.getTime());
     const now = Date.now();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const fiveMinMs = 5 * 60 * 1000;
-    if (now - eventTs.getTime() > sevenDaysMs) {
-      return errorResponse('event_time is older than 7 days', 422);
-    }
-    if (eventTs.getTime() - now > fiveMinMs) {
+    if (!invalidTime && eventTs.getTime() - now > fiveMinMs) {
+      // Future-stamped events become valid once the clock catches up — 422 so the device retries
+      console.warn(`[submit-log] 422 future event_time | time=${event_time} event=${device_event_id}`);
       return errorResponse('event_time is too far in the future', 422);
     }
 
@@ -81,6 +86,35 @@ Deno.serve(async (req: Request) => {
     const device = await authenticateDevice(supabase, device_uid, device_secret);
     if (!device) {
       return errorResponse('Invalid device credentials', 401);
+    }
+
+    // Stale or unparseable events can never become valid, and a 4xx would leave them
+    // retrying in the device's offline queue forever. Accept-and-discard (200,
+    // inserted:false) so the firmware treats them as duplicates and drops them from
+    // its queue; audit the discard.
+    if (invalidTime) {
+      console.warn(`[submit-log] invalid event_time discarded | device=${device.id} event=${device_event_id} time=${event_time}`);
+      auditLog(supabase, {
+        organization_id: device.organization_id,
+        actor_type: 'device',
+        actor_id: device.id,
+        action: 'attendance.rejected',
+        resource_type: 'attendance_log',
+        metadata: { reason: 'invalid_timestamp', device_event_id, event_time, event_action: action, credential_value },
+      });
+      return jsonResponse({ status: 'ok', inserted: false, log_id: null, discarded: 'invalid_timestamp' });
+    }
+    if (now - eventTs.getTime() > sevenDaysMs) {
+      console.warn(`[submit-log] stale event discarded | device=${device.id} event=${device_event_id} event_time=${event_time}`);
+      auditLog(supabase, {
+        organization_id: device.organization_id,
+        actor_type: 'device',
+        actor_id: device.id,
+        action: 'attendance.rejected',
+        resource_type: 'attendance_log',
+        metadata:{ reason: 'stale_timestamp', device_event_id, event_time, event_action: action, credential_value },
+      });
+      return jsonResponse({ status: 'ok', inserted: false, log_id: null, discarded: 'stale_timestamp' });
     }
 
     console.log(`[submit-log] auth ok | org=${device.organization_id} device=${device.id} event=${device_event_id}`);
@@ -102,6 +136,14 @@ Deno.serve(async (req: Request) => {
     const subActive = await checkSubscriptionActive(supabase, device.organization_id);
     if (!subActive) {
       console.warn(`[submit-log] subscription inactive | org=${device.organization_id}`);
+      auditLog(supabase, {
+        organization_id: device.organization_id,
+        actor_type: 'device',
+        actor_id: device.id,
+        action: 'attendance.rejected',
+        resource_type: 'attendance_log',
+        metadata:{ reason: 'subscription_inactive', device_event_id, event_time, event_action: action },
+      });
       return errorResponse('Subscription inactive or expired', 403);
     }
 
@@ -115,6 +157,20 @@ Deno.serve(async (req: Request) => {
       .single();
 
     const userId = credential?.user_id || null;
+
+    // Unknown card — the log is still recorded (user_id null), but audit it so
+    // admins can see unrecognised cards in the dashboard and enroll them
+    if (!userId) {
+      console.warn(`[submit-log] unknown credential | device=${device.id} card=${credential_value}`);
+      auditLog(supabase, {
+        organization_id: device.organization_id,
+        actor_type: 'device',
+        actor_id: device.id,
+        action: 'attendance.unknown_credential',
+        resource_type: 'user_credentials',
+        metadata: { credential_value, device_event_id, event_time, event_action: action },
+      });
+    }
 
     // 5. Insert attendance log with idempotent device_event_id
     //    ON CONFLICT (device_id, device_event_id) DO NOTHING

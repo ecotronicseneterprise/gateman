@@ -860,6 +860,19 @@ async function checkSystemHealth() {
     else if (mins > 10) warnings.push(`Device "${d.name}" last seen ${mins < 120 ? mins + ' min' : Math.round(mins/60) + ' h'} ago — check power/WiFi.`);
   });
 
+  // Camera health inference: recognised taps should carry photos. Photos upload
+  // asynchronously, so only consider logs older than 3 minutes.
+  const { data: recentLogs } = await sb.from('attendance_logs')
+    .select('photo_url')
+    .eq('organization_id', currentOrgId)
+    .not('user_id', 'is', null)
+    .lt('synced_at', new Date(Date.now() - 3 * 60000).toISOString())
+    .order('synced_at', { ascending: false })
+    .limit(3);
+  if (recentLogs && recentLogs.length >= 2 && recentLogs.every(l => !l.photo_url)) {
+    warnings.push(`Last ${recentLogs.length} taps have no photos — ESP32-CAM may be down (check UART wiring, power-cycle both boards together).`);
+  }
+
   if (problems.length) {
     banner.style.display = 'block';
     banner.style.background = 'rgba(239,68,68,.12)';
@@ -1130,10 +1143,26 @@ function renderEmployeesTable(list) {
       <td><span class="badge present">Active</span></td>
       <td style="color:var(--muted);font-size:12px">${e.email||'—'}</td>
       <td>
-        <button class="btn btn-outline btn-sm" onclick="openAssignRfid('${e.id}')">Assign Card</button>
+        ${e.rfid_uid
+          ? `<button class="btn btn-outline btn-sm" onclick="removeCard('${e.id}', '${e.name}', '${e.rfid_uid}')">Remove Card</button>`
+          : `<button class="btn btn-outline btn-sm" onclick="openAssignRfid('${e.id}')">Assign Card</button>`}
         <button class="btn btn-red btn-sm" onclick="deleteEmployee('${e.id}', '${e.name}')">Delete</button>
       </td>
     </tr>`).join('');
+}
+
+async function removeCard(userId, name, rfidUid) {
+  if (!confirm(`Remove card ${rfidUid} from ${name}?\n\nThe card becomes unassigned and can be re-enrolled to anyone. Past attendance records are not affected.`)) return;
+  const { error, count } = await sb.from('user_credentials')
+    .delete({ count: 'exact' })
+    .eq('organization_id', currentOrgId)
+    .eq('user_id', userId)
+    .eq('type', 'rfid')
+    .eq('value', rfidUid);
+  if (error) return showToast(error.message || 'Failed to remove card', 'error');
+  if (!count) return showToast('Nothing deleted — run migration 005 (credentials_delete policy) in Supabase SQL Editor', 'error');
+  showToast(`Card ${rfidUid} removed from ${name}`);
+  loadEmployees();
 }
 
 function openAddEmployee() { document.getElementById('addEmployeeModal').classList.add('open'); }
